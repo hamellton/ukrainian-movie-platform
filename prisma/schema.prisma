@@ -1,0 +1,128 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Admin {
+  id        String   @id @default(cuid())
+  username  String   @unique
+  email     String   @unique
+  password  String
+  role      Role     @default(ADMIN)
+  isActive  Boolean  @default(true)
+  lastLogin DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("admins")
+}
+
+model Movie {
+  id              String      @id @default(cuid())
+  title           String
+  titleOriginal   String?
+  description     String      @db.Text
+  descriptionShort String?    @db.Text
+  poster          String
+  backdrop        String?
+  releaseDate     DateTime
+  genres          String[]
+  countries       String[]
+  rating          Float       @default(0)
+  ratingCount     Int         @default(0)
+  duration        Int?
+  type            MovieType   @default(MOVIE)
+  videoLinks      VideoLink[]
+  episodes        Episode[]
+  tmdbId          Int?        @unique
+  imdbId          String?
+  views           Int         @default(0)
+  isActive        Boolean     @default(true)
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  @@index([type])
+  @@index([isActive])
+  @@index([releaseDate(sort: Desc)])
+  @@index([views(sort: Desc)])
+  @@index([rating(sort: Desc)])
+  @@index([title])
+  @@index([description])
+  @@map("movies")
+}
+
+model VideoLink {
+  id         String   @id @default(cuid())
+  movieId    String
+  movie      Movie    @relation(fields: [movieId], references: [id], onDelete: Cascade)
+  source     VideoSource
+  url        String   @db.Text
+  quality    String?  @default("720p")
+  language   String?  @default("uk")
+  isActive   Boolean  @default(true)
+  lastChecked DateTime @default(now())
+  episodeId  String?
+  episode    Episode? @relation(fields: [episodeId], references: [id], onDelete: Cascade)
+
+  @@map("video_links")
+}
+
+model Episode {
+  id            String      @id @default(cuid())
+  movieId       String
+  movie         Movie       @relation(fields: [movieId], references: [id], onDelete: Cascade)
+  episodeNumber Int
+  seasonNumber  Int
+  title         String
+  description   String?     @db.Text
+  videoLinks    VideoLink[]
+  duration      Int?
+  thumbnail     String?
+
+  @@unique([movieId, seasonNumber, episodeNumber])
+  @@map("episodes")
+}
+
+model AdConfig {
+  id        String   @id @default(cuid())
+  name      String
+  type      AdType
+  position  Int?     @default(0)
+  adTag     String   @db.Text
+  isActive  Boolean  @default(true)
+  priority  Int      @default(0)
+  startTime Int?
+  endTime   Int?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("ad_configs")
+}
+
+enum Role {
+  ADMIN
+  MODERATOR
+}
+
+enum MovieType {
+  MOVIE
+  SERIES
+}
+
+enum VideoSource {
+  EMBED
+  DIRECT
+  PARSED
+}
+
+enum AdType {
+  PRE_ROLL
+  MID_ROLL
+  POST_ROLL
+  OVERLAY
+  BANNER
+}
