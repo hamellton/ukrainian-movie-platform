@@ -1,17 +1,17 @@
 import { useState } from 'react'
 import { useRouter } from 'next/router'
 import axios from 'axios'
+import toast from 'react-hot-toast'
+import { getErrorMessage, getErrorDetails } from '@/utils/errorHandler'
 
 export default function AdminLogin() {
   const router = useRouter()
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
-  const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    setError('')
     setLoading(true)
 
     try {
@@ -22,10 +22,11 @@ export default function AdminLogin() {
 
       if (response.data.token) {
         localStorage.setItem('adminToken', response.data.token)
+        toast.success('Вхід виконано')
         router.push('/admin')
       }
-    } catch (err: any) {
-      setError(err.response?.data?.error || 'Помилка входу')
+    } catch (err: unknown) {
+      toast.error(getErrorDetails(err) || getErrorMessage(err) || 'Помилка входу')
     } finally {
       setLoading(false)
     }
@@ -36,11 +37,6 @@ export default function AdminLogin() {
       <div className="bg-gray-900 rounded-lg p-8 w-full max-w-md">
         <h1 className="text-3xl font-bold text-white mb-6 text-center">Адмін панель</h1>
         <form onSubmit={handleSubmit} className="space-y-4">
-          {error && (
-            <div className="bg-red-500/20 border border-red-500 text-red-400 px-4 py-3 rounded">
-              {error}
-            </div>
-          )}
           <div>
             <label className="block text-gray-300 mb-2">Логін або Email</label>
             <input

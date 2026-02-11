@@ -1,14 +1,20 @@
 import { NextApiRequest, NextApiResponse } from 'next'
+import { VideoLink, VideoSource } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { parseVideoUrl } from '@/utils/videoParser'
+import { getErrorMessage, getErrorDetails } from '@/utils/errorHandler'
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   const { id, episodeNumber, seasonNumber } = req.query
 
+  if (typeof id !== 'string') {
+    return res.status(400).json({ error: 'Invalid movie ID' })
+  }
+
   if (req.method === 'GET') {
     try {
       const movie = await prisma.movie.findUnique({
-        where: { id: id as string },
+        where: { id },
         include: {
           videoLinks: {
             where: { isActive: true },
@@ -27,15 +33,19 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         return res.status(404).json({ error: 'Movie not found' })
       }
 
-      let videoLinks = []
+      let videoLinks: VideoLink[] = []
 
       if (movie.type === 'SERIES' && episodeNumber && seasonNumber) {
-        const episode = movie.episodes.find(
-          ep => ep.episodeNumber === parseInt(episodeNumber as string) &&
-          ep.seasonNumber === parseInt(seasonNumber as string)
-        )
-        if (episode) {
-          videoLinks = episode.videoLinks
+        const episodeNum = typeof episodeNumber === 'string' ? parseInt(episodeNumber) : undefined
+        const seasonNum = typeof seasonNumber === 'string' ? parseInt(seasonNumber) : undefined
+
+        if (episodeNum !== undefined && seasonNum !== undefined) {
+          const episode = movie.episodes.find(
+            (ep) => ep.episodeNumber === episodeNum && ep.seasonNumber === seasonNum
+          )
+          if (episode) {
+            videoLinks = episode.videoLinks
+          }
         }
       } else {
         videoLinks = movie.videoLinks
@@ -55,7 +65,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           if (parsed) {
             return {
               ...link,
-              source: parsed.source.toUpperCase(),
+              source: parsed.source.toUpperCase() as VideoSource,
               url: parsed.url,
               quality: parsed.quality || link.quality,
             }
@@ -66,8 +76,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       )
 
       return res.status(200).json({ videoLinks: parsedLinks })
-    } catch (error: any) {
-      return res.status(500).json({ error: 'Failed to fetch video links', details: error.message })
+    } catch (error: unknown) {
+      return res.status(500).json({
+        error: 'Failed to fetch video links',
+        details: getErrorDetails(error) || getErrorMessage(error),
+      })
     }
   }
 

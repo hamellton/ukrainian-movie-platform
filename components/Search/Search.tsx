@@ -1,10 +1,10 @@
-import { useState } from 'react'
 import { useRouter } from 'next/router'
 import { FiSearch } from 'react-icons/fi'
+import { useSearchStore } from '@/stores/searchStore'
 
 export default function Search() {
-  const [query, setQuery] = useState('')
   const router = useRouter()
+  const { query, setQuery } = useSearchStore()
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()

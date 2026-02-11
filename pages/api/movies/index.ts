@@ -1,6 +1,8 @@
 import { NextApiRequest, NextApiResponse } from 'next'
 import { prisma } from '@/lib/prisma'
 import { MovieType } from '@prisma/client'
+import { PrismaMovieWhereInput, PrismaMovieOrderByInput, MovieCreateInput } from '@/types'
+import { getErrorMessage, getErrorDetails } from '@/utils/errorHandler'
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method === 'GET') {
@@ -14,30 +16,35 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         sort = '-createdAt',
       } = req.query
 
-      const where: any = { isActive: true }
+      const where: PrismaMovieWhereInput = { isActive: true }
 
       if (type && (type === 'movie' || type === 'series')) {
         where.type = type === 'movie' ? MovieType.MOVIE : MovieType.SERIES
       }
 
-      if (genre) {
-        where.genres = { has: genre as string }
+      if (genre && typeof genre === 'string') {
+        where.genres = { has: genre }
       }
 
-      if (search) {
+      if (search && typeof search === 'string') {
         where.OR = [
-          { title: { contains: search as string, mode: 'insensitive' } },
-          { description: { contains: search as string, mode: 'insensitive' } },
+          { title: { contains: search, mode: 'insensitive' } },
+          { description: { contains: search, mode: 'insensitive' } },
         ]
       }
 
-      const skip = (parseInt(page as string) - 1) * parseInt(limit as string)
-      const orderBy: any = {}
+      const skip = (parseInt(String(page)) - 1) * parseInt(String(limit))
+      const orderBy: PrismaMovieOrderByInput = {}
+      const sortStr = Array.isArray(sort) ? sort[0] : sort
 
-      if (sort.startsWith('-')) {
-        orderBy[sort.substring(1)] = 'desc'
-      } else {
-        orderBy[sort] = 'asc'
+      if (typeof sortStr === 'string') {
+        if (sortStr.startsWith('-')) {
+          const field = sortStr.substring(1) as keyof PrismaMovieOrderByInput
+          orderBy[field] = 'desc'
+        } else {
+          const field = sortStr as keyof PrismaMovieOrderByInput
+          orderBy[field] = 'asc'
+        }
       }
 
       const [movies, total] = await Promise.all([
@@ -45,7 +52,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           where,
           orderBy,
           skip,
-          take: parseInt(limit as string),
+          take: parseInt(String(limit)),
           select: {
             id: true,
             title: true,
@@ -75,27 +82,48 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(200).json({
         movies,
         pagination: {
-          page: parseInt(page as string),
-          limit: parseInt(limit as string),
+          page: parseInt(String(page)),
+          limit: parseInt(String(limit)),
           total,
-          pages: Math.ceil(total / parseInt(limit as string)),
+          pages: Math.ceil(total / parseInt(String(limit))),
         },
       })
-    } catch (error: any) {
-      return res.status(500).json({ error: 'Failed to fetch movies', details: error.message })
+    } catch (error: unknown) {
+      return res.status(500).json({
+        error: 'Failed to fetch movies',
+        details: getErrorDetails(error) || getErrorMessage(error),
+      })
     }
   }
 
   if (req.method === 'POST') {
     try {
-      const movieData = req.body
+      const body = req.body as MovieCreateInput
       const movie = await prisma.movie.create({
-        data: movieData,
+        data: {
+          title: body.title,
+          titleOriginal: body.titleOriginal,
+          description: body.description,
+          descriptionShort: body.descriptionShort,
+          poster: body.poster,
+          backdrop: body.backdrop,
+          releaseDate: body.releaseDate ? new Date(body.releaseDate) : new Date(),
+          genres: body.genres || [],
+          countries: body.countries || [],
+          rating: body.rating || 0,
+          duration: body.duration,
+          type: body.type === 'SERIES' ? MovieType.SERIES : MovieType.MOVIE,
+          tmdbId: body.tmdbId,
+          imdbId: body.imdbId,
+        },
       })
 
       return res.status(201).json({ movie })
-    } catch (error: any) {
-      return res.status(500).json({ error: 'Failed to create movie', details: error.message })
+    } catch (error: unknown) {
+      return res.status(500).json({
+        error: 'Failed to create movie',
+        details: getErrorDetails(error) || getErrorMessage(error),
+      })
     }
   }
 

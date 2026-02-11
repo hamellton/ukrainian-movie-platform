@@ -3,12 +3,26 @@ import { VideoLinkParsed } from '@/types'
 
 const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
 
+const SUPPORTED_HOSTS = [
+  'ashdi.vip',
+  'tortuga.wtf',
+  'vidstreaming.io',
+  'streamtape.com',
+  'mixdrop.co',
+  'upstream.to',
+  'streamlare.com',
+  'filemoon.sx',
+  'doodstream.com',
+  'streamwish.to',
+  'streamhub.to',
+]
+
 export async function parseVideoUrl(url: string): Promise<VideoLinkParsed | null> {
   try {
-    if (isEmbedUrl(url)) {
+    if (isSupportedHost(url)) {
       return {
         source: 'embed',
-        url: url,
+        url: normalizeUrl(url),
         quality: 'auto',
       }
     }
@@ -21,14 +35,9 @@ export async function parseVideoUrl(url: string): Promise<VideoLinkParsed | null
       }
     }
 
-    const parsedUrl = await parseExternalSource(url)
-    if (parsedUrl) {
-      return parsedUrl
-    }
-
     return {
       source: 'embed',
-      url: url,
+      url: normalizeUrl(url),
       quality: 'auto',
     }
   } catch (error) {
@@ -37,16 +46,8 @@ export async function parseVideoUrl(url: string): Promise<VideoLinkParsed | null
   }
 }
 
-function isEmbedUrl(url: string): boolean {
-  const embedPatterns = [
-    /youtube\.com\/embed/,
-    /youtube\.com\/v\//,
-    /vimeo\.com\/\d+/,
-    /dailymotion\.com\/embed/,
-    /ok\.ru\/videoembed/,
-    /vk\.com\/video/,
-  ]
-  return embedPatterns.some(pattern => pattern.test(url))
+function isSupportedHost(url: string): boolean {
+  return SUPPORTED_HOSTS.some(host => url.includes(host))
 }
 
 function isDirectVideoUrl(url: string): boolean {
@@ -54,113 +55,143 @@ function isDirectVideoUrl(url: string): boolean {
   return videoExtensions.some(ext => url.includes(ext))
 }
 
-async function parseExternalSource(url: string): Promise<VideoLinkParsed | null> {
-  try {
-    if (url.includes('ok.ru')) {
-      return await parseOkRu(url)
-    }
-    
-    if (url.includes('vk.com')) {
-      return await parseVk(url)
-    }
-
-    if (url.includes('youtube.com') || url.includes('youtu.be')) {
-      return await parseYouTube(url)
-    }
-
-    return null
-  } catch (error) {
-    console.error('Error parsing external source:', error)
-    return null
+function normalizeUrl(url: string): string {
+  let normalized = url
+  
+  if (!normalized.startsWith('http://') && !normalized.startsWith('https://')) {
+    normalized = `https:${normalized}`
   }
+  
+  if (normalized.includes('ashdi.vip/vod/')) {
+    normalized = normalized.replace('/vod/', '/embed/')
+  }
+  
+  return normalized
 }
 
-async function parseOkRu(url: string): Promise<VideoLinkParsed | null> {
-  try {
-    const videoId = extractOkRuId(url)
-    if (!videoId) return null
+export async function searchVideoLinks(movieTitle: string, year?: number): Promise<string[]> {
+  const searchQueries = [
+    movieTitle,
+    year ? `${movieTitle} ${year}` : movieTitle,
+    movieTitle.toLowerCase(),
+  ]
 
-    const response = await axios.get(`https://ok.ru/dk?cmd=videoPlayerMetadata&mid=${videoId}`, {
-      headers: { 'User-Agent': USER_AGENT },
+  const foundLinks: string[] = []
+
+  for (const query of searchQueries) {
+    try {
+      const links = await Promise.all([
+        searchOnHost('ashdi.vip', query),
+        searchOnHost('tortuga.wtf', query),
+        searchOnHost('vidstreaming.io', query),
+      ])
+
+      foundLinks.push(...links.flat().filter(Boolean))
+    } catch (error) {
+      console.error(`Error searching for ${query}:`, error)
+    }
+  }
+
+  return Array.from(new Set(foundLinks))
+}
+
+async function searchOnHost(host: string, query: string): Promise<string[]> {
+  try {
+    const searchUrl = getSearchUrl(host, query)
+    if (!searchUrl) return []
+
+    const response = await axios.get(searchUrl, {
+      headers: {
+        'User-Agent': USER_AGENT,
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'uk-UA,uk;q=0.9',
+        'Referer': `https://${host}/`,
+      },
+      timeout: 10000,
+      maxRedirects: 5,
     })
 
-    if (response.data && response.data.videos) {
-      const videos = response.data.videos
-      const bestQuality = videos.sort((a: any, b: any) => b.size - a.size)[0]
-      return {
-        source: 'parsed',
-        url: bestQuality.url,
-        quality: bestQuality.name || 'auto',
+    if (response.data) {
+      return extractVideoLinks(host, response.data)
+    }
+    
+    return []
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+    console.error(`Error searching on ${host}:`, errorMessage)
+    return []
+  }
+}
+
+function getSearchUrl(host: string, query: string): string | null {
+  const encodedQuery = encodeURIComponent(query)
+  
+  switch (host) {
+    case 'ashdi.vip':
+      return `https://ashdi.vip/search?q=${encodedQuery}`
+    case 'tortuga.wtf':
+      return `https://tortuga.wtf/search?q=${encodedQuery}`
+    case 'vidstreaming.io':
+      return `https://vidstreaming.io/search?q=${encodedQuery}`
+    default:
+      return null
+  }
+}
+
+function extractVideoLinks(host: string, html: string): string[] {
+  const links: string[] = []
+  
+  const patterns: { [key: string]: RegExp[] } = {
+    'ashdi.vip': [
+      /\/vod\/(\d+)/g,
+      /\/embed\/(\d+)/g,
+      /ashdi\.vip\/vod\/(\d+)/g,
+      /ashdi\.vip\/embed\/(\d+)/g,
+    ],
+    'tortuga.wtf': [
+      /\/embed\/([a-zA-Z0-9]+)/g,
+      /tortuga\.wtf\/embed\/([a-zA-Z0-9]+)/g,
+    ],
+    'vidstreaming.io': [
+      /\/embed\/([a-zA-Z0-9]+)/g,
+      /vidstreaming\.io\/embed\/([a-zA-Z0-9]+)/g,
+    ],
+  }
+
+  const hostPatterns = patterns[host] || []
+  
+  for (const pattern of hostPatterns) {
+    const matchesArr = Array.from(html.matchAll(pattern))
+    for (const match of matchesArr) {
+      const videoId = match[1]
+      if (host === 'ashdi.vip') {
+        links.push(`https://ashdi.vip/embed/${videoId}`)
+      } else if (host === 'tortuga.wtf') {
+        links.push(`https://tortuga.wtf/embed/${videoId}`)
+      } else {
+        links.push(`https://${host}/embed/${videoId}`)
       }
     }
-
-    return {
-      source: 'embed',
-      url: `https://ok.ru/videoembed/${videoId}`,
-      quality: 'auto',
-    }
-  } catch (error) {
-    return {
-      source: 'embed',
-      url: url,
-      quality: 'auto',
-    }
   }
-}
 
-async function parseVk(url: string): Promise<VideoLinkParsed | null> {
-  try {
-    return {
-      source: 'embed',
-      url: url,
-      quality: 'auto',
-    }
-  } catch (error) {
-    return null
-  }
-}
-
-async function parseYouTube(url: string): Promise<VideoLinkParsed | null> {
-  try {
-    const videoId = extractYouTubeId(url)
-    if (!videoId) return null
-
-    return {
-      source: 'embed',
-      url: `https://www.youtube.com/embed/${videoId}`,
-      quality: 'auto',
-    }
-  } catch (error) {
-    return null
-  }
-}
-
-function extractOkRuId(url: string): string | null {
-  const match = url.match(/ok\.ru\/video\/(\d+)/)
-  return match ? match[1] : null
-}
-
-function extractYouTubeId(url: string): string | null {
-  const patterns = [
-    /(?:youtube\.com\/watch\?v=|youtu\.be\/)([^&\n?#]+)/,
-    /youtube\.com\/embed\/([^&\n?#]+)/,
-  ]
-  
-  for (const pattern of patterns) {
-    const match = url.match(pattern)
-    if (match) return match[1]
-  }
-  
-  return null
+  return Array.from(new Set(links))
 }
 
 export function validateVideoUrl(url: string): boolean {
   if (!url || typeof url !== 'string') return false
   
+  if (isSupportedHost(url) || isDirectVideoUrl(url)) {
+    return true
+  }
+  
+  const normalized = normalizeUrl(url)
   try {
-    new URL(url)
+    new URL(normalized)
     return true
   } catch {
+    if (normalized.startsWith('//')) {
+      return true
+    }
     return false
   }
 }

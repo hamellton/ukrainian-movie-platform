@@ -1,34 +1,54 @@
-import { useState, useEffect } from 'react'
+import { useEffect, useCallback } from 'react'
 import { useRouter } from 'next/router'
-import axios from 'axios'
-import { MovieWithRelations } from '@/types'
+import Image from 'next/image'
+import axios, { AxiosError } from 'axios'
+import toast from 'react-hot-toast'
+import { MovieWithRelations, TmdbMovieResult } from '@/types'
+import { useAdminStore, type ImportType } from '@/stores/adminStore'
+import { confirmDialog } from '@/components/ConfirmDialog/ConfirmDialog'
+import { getErrorMessage, getErrorDetails } from '@/utils/errorHandler'
 
 export default function AdminPanel() {
   const router = useRouter()
-  const [activeTab, setActiveTab] = useState('movies')
-  const [movies, setMovies] = useState<MovieWithRelations[]>([])
-  const [loading, setLoading] = useState(true)
-  const [editingMovie, setEditingMovie] = useState<MovieWithRelations | null>(null)
-  const [importSearch, setImportSearch] = useState('')
-  const [importResults, setImportResults] = useState<any[]>([])
-  const [importLoading, setImportLoading] = useState(false)
-  const [importPage, setImportPage] = useState(1)
-  const [importType, setImportType] = useState<'movies' | 'series' | 'popular'>('popular')
-  const [formData, setFormData] = useState({
-    title: '',
-    titleOriginal: '',
-    description: '',
-    descriptionShort: '',
-    poster: '',
-    backdrop: '',
-    releaseDate: '',
-    genres: '',
-    countries: '',
-    rating: '',
-    duration: '',
-    type: 'MOVIE',
-    videoLinks: '',
-  })
+  const {
+    activeTab,
+    movies,
+    loading,
+    editingMovie,
+    formData,
+    importSearch,
+    importResults,
+    importLoading,
+    importPage,
+    importType,
+    setActiveTab,
+    setMovies,
+    setLoading,
+    setFormData,
+    setFormDataFromMovie,
+    resetForm,
+    setImportSearch,
+    setImportResults,
+    setImportLoading,
+    setImportPage,
+    setImportType,
+  } = useAdminStore()
+
+  const loadMovies = useCallback(async () => {
+    try {
+      const token = localStorage.getItem('adminToken')
+      const response = await axios.get('/api/admin/movies', {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      setMovies(response.data.movies || [])
+    } catch (error: unknown) {
+      if (axios.isAxiosError(error) && error.response?.status === 401) {
+        router.push('/admin/login')
+      }
+    } finally {
+      setLoading(false)
+    }
+  }, [router, setMovies, setLoading])
 
   useEffect(() => {
     const token = localStorage.getItem('adminToken')
@@ -37,25 +57,7 @@ export default function AdminPanel() {
       return
     }
     loadMovies()
-  }, [router])
-
-  const loadMovies = async () => {
-    try {
-      const token = localStorage.getItem('adminToken')
-      const response = await axios.get('/api/admin/movies', {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      })
-      setMovies(response.data.movies || [])
-    } catch (error: any) {
-      if (error.response?.status === 401) {
-        router.push('/admin/login')
-      }
-    } finally {
-      setLoading(false)
-    }
-  }
+  }, [router, loadMovies])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -63,12 +65,9 @@ export default function AdminPanel() {
       const token = localStorage.getItem('adminToken')
       const videoLinksArray = formData.videoLinks
         .split('\n')
-        .map(url => url.trim())
+        .map((url) => url.trim())
         .filter(Boolean)
-        .map(url => ({
-          url,
-          quality: '720p',
-        }))
+        .map((url) => ({ url, quality: '720p' }))
 
       const movieData = {
         title: formData.title,
@@ -78,8 +77,8 @@ export default function AdminPanel() {
         poster: formData.poster,
         backdrop: formData.backdrop || undefined,
         releaseDate: new Date(formData.releaseDate).toISOString(),
-        genres: formData.genres.split(',').map(g => g.trim()).filter(Boolean),
-        countries: formData.countries.split(',').map(c => c.trim()).filter(Boolean),
+        genres: formData.genres.split(',').map((g) => g.trim()).filter(Boolean),
+        countries: formData.countries.split(',').map((c) => c.trim()).filter(Boolean),
         rating: formData.rating ? parseFloat(formData.rating) : 0,
         duration: formData.duration ? parseInt(formData.duration) : undefined,
         type: formData.type,
@@ -99,109 +98,81 @@ export default function AdminPanel() {
       resetForm()
       loadMovies()
       setActiveTab('movies')
-      alert(editingMovie ? 'Фільм оновлено!' : 'Фільм додано!')
-    } catch (error: any) {
-      console.error('Error:', error)
-      alert(error.response?.data?.error || error.response?.data?.details || 'Помилка збереження')
+      toast.success(editingMovie ? 'Фільм оновлено!' : 'Фільм додано!')
+    } catch (error: unknown) {
+      toast.error(getErrorDetails(error) || getErrorMessage(error) || 'Помилка збереження')
     }
   }
 
   const handleDelete = async (id: string) => {
-    if (!confirm('Ви впевнені, що хочете видалити цей фільм?')) return
-
-    try {
-      const token = localStorage.getItem('adminToken')
-      await axios.delete(`/api/admin/movies/${id}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      })
+    confirmDialog({
+      title: 'Видалення фільму',
+      message: 'Ви впевнені, що хочете видалити цей фільм?',
+      confirmText: 'Видалити',
+      cancelText: 'Скасувати',
+      onConfirm: async () => {
+        try {
+          const token = localStorage.getItem('adminToken')
+          await axios.delete(`/api/admin/movies/${id}`, {
+            headers: { Authorization: `Bearer ${token}` },
+          })
       loadMovies()
-    } catch (error: any) {
-      alert(error.response?.data?.error || 'Помилка видалення')
+      toast.success('Фільм видалено')
+    } catch (error: unknown) {
+      toast.error(getErrorDetails(error) || getErrorMessage(error) || 'Помилка видалення')
     }
+      },
+    })
   }
 
   const handleEdit = (movie: MovieWithRelations) => {
-    setEditingMovie(movie)
-    setFormData({
-      title: movie.title,
-      titleOriginal: movie.titleOriginal || '',
-      description: movie.description,
-      descriptionShort: movie.descriptionShort || '',
-      poster: movie.poster,
-      backdrop: movie.backdrop || '',
-      releaseDate: new Date(movie.releaseDate).toISOString().split('T')[0],
-      genres: movie.genres.join(', '),
-      countries: movie.countries.join(', '),
-      rating: movie.rating.toString(),
-      duration: movie.duration?.toString() || '',
-      type: movie.type,
-      videoLinks: movie.videoLinks.map(vl => vl.url).join('\n'),
-    })
+    setFormDataFromMovie(movie)
     setActiveTab('add')
-  }
-
-  const resetForm = () => {
-    setFormData({
-      title: '',
-      titleOriginal: '',
-      description: '',
-      descriptionShort: '',
-      poster: '',
-      backdrop: '',
-      releaseDate: '',
-      genres: '',
-      countries: '',
-      rating: '',
-      duration: '',
-      type: 'MOVIE',
-      videoLinks: '',
-    })
-    setEditingMovie(null)
   }
 
   const handleImportSearch = async () => {
     if (!importSearch.trim()) return
-    
+
     setImportLoading(true)
     try {
       const token = localStorage.getItem('adminToken')
-      const response = await axios.post('/api/admin/import/tmdb', {
-        searchQuery: importSearch,
-        page: 1,
-      }, {
-        headers: { Authorization: `Bearer ${token}` },
-      })
+      const response = await axios.post(
+        '/api/admin/import/tmdb',
+        { searchQuery: importSearch, page: 1 },
+        { headers: { Authorization: `Bearer ${token}` } }
+      )
       setImportResults(response.data.results || [])
       setImportPage(1)
     } catch (error: any) {
-      const errorMsg = error.response?.data?.error || error.response?.data?.details || 'Помилка пошуку'
-      alert(errorMsg)
+      const errorMsg =
+        error.response?.data?.error || error.response?.data?.details || 'Помилка пошуку'
+      toast.error(errorMsg)
       if (errorMsg.includes('TMDB_API_KEY')) {
-        alert('Для використання імпорту потрібен TMDB API ключ. Додайте його в .env файл')
+        toast.error('Додайте TMDB_API_KEY в .env файл для використання імпорту')
       }
     } finally {
       setImportLoading(false)
     }
   }
 
-  const handleLoadPopular = async (type: 'movies' | 'series' | 'popular', page: number = 1) => {
+  const handleLoadPopular = async (type: ImportType, page: number = 1) => {
     setImportLoading(true)
     try {
       const token = localStorage.getItem('adminToken')
-      const response = await axios.post('/api/admin/import/tmdb', {
-        type,
-        page,
-      }, {
-        headers: { Authorization: `Bearer ${token}` },
-      })
+      const response = await axios.post(
+        '/api/admin/import/tmdb',
+        { type, page },
+        { headers: { Authorization: `Bearer ${token}` } }
+      )
       setImportResults(response.data.results || [])
       setImportPage(page)
       setImportType(type)
     } catch (error: any) {
-      const errorMsg = error.response?.data?.error || error.response?.data?.details || 'Помилка завантаження'
-      alert(errorMsg)
+      const errorMsg =
+        error.response?.data?.error || error.response?.data?.details || 'Помилка завантаження'
+      toast.error(errorMsg)
       if (errorMsg.includes('TMDB_API_KEY')) {
-        alert('Для використання імпорту потрібен TMDB API ключ. Додайте його в .env файл')
+        toast.error('Додайте TMDB_API_KEY в .env файл для використання імпорту')
       }
     } finally {
       setImportLoading(false)
@@ -209,28 +180,38 @@ export default function AdminPanel() {
   }
 
   const handleImportMovie = async (tmdbId: number, mediaType: string) => {
-    if (!confirm('Імпортувати цей фільм/серіал?')) return
+    confirmDialog({
+      title: 'Імпорт фільму',
+      message: 'Імпортувати цей фільм/серіал?',
+      confirmText: 'Імпортувати',
+      cancelText: 'Скасувати',
+      onConfirm: async () => {
+        try {
+          const token = localStorage.getItem('adminToken')
+          const response = await axios.post(
+            '/api/admin/import/tmdb',
+            { tmdbId, type: mediaType },
+            { headers: { Authorization: `Bearer ${token}` } }
+          )
 
-    try {
-      const token = localStorage.getItem('adminToken')
-      const response = await axios.post('/api/admin/import/tmdb', {
-        tmdbId,
-        type: mediaType,
-      }, {
-        headers: { Authorization: `Bearer ${token}` },
-      })
-
-      if (response.data.imported) {
-        alert('Фільм успішно імпортовано! Тепер додайте посилання на відео.')
-        loadMovies()
-        const movie = response.data.movie
-        handleEdit(movie)
-      } else {
-        alert('Фільм вже існує в базі')
+          if (response.data.imported) {
+            const autoFound = response.data.autoFoundLinks || 0
+            if (autoFound > 0) {
+              toast.success(`Фільм імпортовано! Знайдено ${autoFound} посилань на відео.`)
+            } else {
+              toast.success('Фільм імпортовано! Додайте посилання на відео вручну.')
+            }
+            loadMovies()
+            const movie = response.data.movie
+            handleEdit(movie)
+          } else {
+          toast('Фільм вже є в базі', { icon: 'ℹ️' })
       }
-    } catch (error: any) {
-      alert(error.response?.data?.error || 'Помилка імпорту')
+    } catch (error: unknown) {
+      toast.error(getErrorDetails(error) || getErrorMessage(error) || 'Помилка імпорту')
     }
+      },
+    })
   }
 
   const handleLogout = () => {
@@ -372,7 +353,7 @@ export default function AdminPanel() {
                   <input
                     type="text"
                     value={formData.title}
-                    onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+                    onChange={(e) => setFormData({ title: e.target.value })}
                     required
                     className="w-full px-4 py-2 bg-gray-800 text-white rounded"
                   />
@@ -382,7 +363,7 @@ export default function AdminPanel() {
                   <input
                     type="text"
                     value={formData.titleOriginal}
-                    onChange={(e) => setFormData({ ...formData, titleOriginal: e.target.value })}
+                    onChange={(e) => setFormData({ titleOriginal: e.target.value })}
                     className="w-full px-4 py-2 bg-gray-800 text-white rounded"
                   />
                 </div>
@@ -392,7 +373,7 @@ export default function AdminPanel() {
                 <label className="block text-gray-300 mb-2">Опис *</label>
                 <textarea
                   value={formData.description}
-                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                  onChange={(e) => setFormData({ description: e.target.value })}
                   required
                   rows={4}
                   className="w-full px-4 py-2 bg-gray-800 text-white rounded"
@@ -403,7 +384,7 @@ export default function AdminPanel() {
                 <label className="block text-gray-300 mb-2">Короткий опис</label>
                 <textarea
                   value={formData.descriptionShort}
-                  onChange={(e) => setFormData({ ...formData, descriptionShort: e.target.value })}
+                  onChange={(e) => setFormData({ descriptionShort: e.target.value })}
                   rows={2}
                   className="w-full px-4 py-2 bg-gray-800 text-white rounded"
                 />
@@ -415,7 +396,7 @@ export default function AdminPanel() {
                   <input
                     type="url"
                     value={formData.poster}
-                    onChange={(e) => setFormData({ ...formData, poster: e.target.value })}
+                    onChange={(e) => setFormData({ poster: e.target.value })}
                     required
                     className="w-full px-4 py-2 bg-gray-800 text-white rounded"
                   />
@@ -425,7 +406,7 @@ export default function AdminPanel() {
                   <input
                     type="url"
                     value={formData.backdrop}
-                    onChange={(e) => setFormData({ ...formData, backdrop: e.target.value })}
+                    onChange={(e) => setFormData({ backdrop: e.target.value })}
                     className="w-full px-4 py-2 bg-gray-800 text-white rounded"
                   />
                 </div>
@@ -437,7 +418,7 @@ export default function AdminPanel() {
                   <input
                     type="date"
                     value={formData.releaseDate}
-                    onChange={(e) => setFormData({ ...formData, releaseDate: e.target.value })}
+                    onChange={(e) => setFormData({ releaseDate: e.target.value })}
                     required
                     className="w-full px-4 py-2 bg-gray-800 text-white rounded"
                   />
@@ -450,7 +431,7 @@ export default function AdminPanel() {
                     min="0"
                     max="10"
                     value={formData.rating}
-                    onChange={(e) => setFormData({ ...formData, rating: e.target.value })}
+                    onChange={(e) => setFormData({ rating: e.target.value })}
                     className="w-full px-4 py-2 bg-gray-800 text-white rounded"
                   />
                 </div>
@@ -459,7 +440,7 @@ export default function AdminPanel() {
                   <input
                     type="number"
                     value={formData.duration}
-                    onChange={(e) => setFormData({ ...formData, duration: e.target.value })}
+                    onChange={(e) => setFormData({ duration: e.target.value })}
                     className="w-full px-4 py-2 bg-gray-800 text-white rounded"
                   />
                 </div>
@@ -471,7 +452,7 @@ export default function AdminPanel() {
                   <input
                     type="text"
                     value={formData.genres}
-                    onChange={(e) => setFormData({ ...formData, genres: e.target.value })}
+                    onChange={(e) => setFormData({ genres: e.target.value })}
                     placeholder="Драма, Трилер, Комедія"
                     required
                     className="w-full px-4 py-2 bg-gray-800 text-white rounded"
@@ -482,7 +463,7 @@ export default function AdminPanel() {
                   <input
                     type="text"
                     value={formData.countries}
-                    onChange={(e) => setFormData({ ...formData, countries: e.target.value })}
+                    onChange={(e) => setFormData({ countries: e.target.value })}
                     placeholder="Україна, США"
                     className="w-full px-4 py-2 bg-gray-800 text-white rounded"
                   />
@@ -493,7 +474,7 @@ export default function AdminPanel() {
                 <label className="block text-gray-300 mb-2">Тип *</label>
                 <select
                   value={formData.type}
-                  onChange={(e) => setFormData({ ...formData, type: e.target.value as 'MOVIE' | 'SERIES' })}
+                  onChange={(e) => setFormData({ type: e.target.value as 'MOVIE' | 'SERIES' })}
                   className="w-full px-4 py-2 bg-gray-800 text-white rounded"
                 >
                   <option value="MOVIE">Фільм</option>
@@ -507,14 +488,17 @@ export default function AdminPanel() {
                 </label>
                 <textarea
                   value={formData.videoLinks}
-                  onChange={(e) => setFormData({ ...formData, videoLinks: e.target.value })}
+                  onChange={(e) => setFormData({ videoLinks: e.target.value })}
                   required
                   rows={4}
-                  placeholder="https://example.com/video.mp4&#10;https://youtube.com/watch?v=..."
+                  placeholder="https://ashdi.vip/vod/123&#10;https://tortuga.wtf/embed/abc&#10;https://example.com/video.mp4"
                   className="w-full px-4 py-2 bg-gray-800 text-white rounded font-mono text-sm"
                 />
                 <p className="text-gray-400 text-sm mt-1">
-                  Підтримуються: прямі посилання (.mp4, .m3u8), YouTube, Ok.ru, VK.com
+                  Підтримуються: ashdi.vip, tortuga.wtf, vidstreaming.io, streamtape.com, mixdrop.co та інші спеціалізовані хостинги, або прямі посилання (.mp4, .m3u8)
+                </p>
+                <p className="text-gray-500 text-xs mt-2">
+                  Як отримати посилання: знайдіть фільм на сайті (наприклад ashdi.vip), відкрийте сторінку фільму, скопіюйте URL з iframe або з атрибута data-file. Формат: https://ashdi.vip/vod/123 або //ashdi.vip/vod/123
                 </p>
               </div>
 
@@ -601,12 +585,14 @@ export default function AdminPanel() {
             ) : (
               <>
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 mb-6">
-                  {importResults.map((item: any) => (
+                  {importResults.map((item: TmdbMovieResult) => (
                     <div key={item.id} className="bg-gray-800 rounded-lg overflow-hidden">
                       {item.poster_path && (
-                        <img
+                        <Image
                           src={`https://image.tmdb.org/t/p/w500${item.poster_path}`}
-                          alt={item.title || item.name}
+                          alt={item.title || item.name || 'Movie poster'}
+                          width={500}
+                          height={750}
                           className="w-full aspect-[2/3] object-cover"
                         />
                       )}

@@ -1,8 +1,11 @@
 import { NextApiResponse } from 'next'
+import { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { requireAuth, AuthenticatedRequest } from '@/middleware/auth'
 import { parseVideoUrl, validateVideoUrl } from '@/utils/videoParser'
 import { MovieType, VideoSource } from '@prisma/client'
+import { PrismaMovieWhereInput, MovieCreateInput, EpisodeCreateInput, VideoLinkCreateInput } from '@/types'
+import { getErrorMessage, getErrorDetails } from '@/utils/errorHandler'
 
 async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
   if (req.method === 'GET') {
@@ -14,27 +17,27 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
         type,
       } = req.query
 
-      const where: any = {}
+      const where: PrismaMovieWhereInput = {}
 
-      if (search) {
+      if (search && typeof search === 'string') {
         where.OR = [
-          { title: { contains: search as string, mode: 'insensitive' } },
-          { description: { contains: search as string, mode: 'insensitive' } },
+          { title: { contains: search, mode: 'insensitive' } },
+          { description: { contains: search, mode: 'insensitive' } },
         ]
       }
 
-      if (type) {
+      if (type && (type === 'movie' || type === 'series')) {
         where.type = type === 'movie' ? MovieType.MOVIE : MovieType.SERIES
       }
 
-      const skip = (parseInt(page as string) - 1) * parseInt(limit as string)
+      const skip = (parseInt(String(page)) - 1) * parseInt(String(limit))
 
       const [movies, total] = await Promise.all([
         prisma.movie.findMany({
           where,
           orderBy: { createdAt: 'desc' },
           skip,
-          take: parseInt(limit as string),
+          take: parseInt(String(limit)),
           include: {
             videoLinks: true,
             episodes: {
@@ -50,33 +53,52 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
       return res.status(200).json({
         movies,
         pagination: {
-          page: parseInt(page as string),
-          limit: parseInt(limit as string),
+          page: parseInt(String(page)),
+          limit: parseInt(String(limit)),
           total,
-          pages: Math.ceil(total / parseInt(limit as string)),
+          pages: Math.ceil(total / parseInt(String(limit))),
         },
       })
-    } catch (error: any) {
-      return res.status(500).json({ error: 'Failed to fetch movies', details: error.message })
+    } catch (error: unknown) {
+      return res.status(500).json({
+        error: 'Failed to fetch movies',
+        details: getErrorDetails(error) || getErrorMessage(error),
+      })
     }
   }
 
   if (req.method === 'POST') {
     try {
-      const movieData: any = { ...req.body }
-
-      if (movieData.releaseDate) {
-        movieData.releaseDate = new Date(movieData.releaseDate)
+      const body = req.body as MovieCreateInput & {
+        videoLinks?: VideoLinkCreateInput[]
+        episodes?: EpisodeCreateInput[]
       }
 
-      if (movieData.videoLinks && Array.isArray(movieData.videoLinks)) {
-        const validatedLinks = []
-        for (const link of movieData.videoLinks) {
+      const movieData: Prisma.MovieCreateInput = {
+        title: body.title,
+        titleOriginal: body.titleOriginal,
+        description: body.description,
+        descriptionShort: body.descriptionShort,
+        poster: body.poster,
+        backdrop: body.backdrop,
+        releaseDate: body.releaseDate ? new Date(body.releaseDate) : new Date(),
+        genres: body.genres || [],
+        countries: body.countries || [],
+        rating: body.rating || 0,
+        duration: body.duration,
+        type: body.type === 'SERIES' ? MovieType.SERIES : MovieType.MOVIE,
+        tmdbId: body.tmdbId,
+        imdbId: body.imdbId,
+      }
+
+      if (body.videoLinks && Array.isArray(body.videoLinks)) {
+        const validatedLinks: Prisma.VideoLinkCreateWithoutMovieInput[] = []
+        for (const link of body.videoLinks) {
           if (validateVideoUrl(link.url)) {
             const parsed = await parseVideoUrl(link.url)
             if (parsed) {
               validatedLinks.push({
-                url: link.url,
+                url: parsed.url,
                 quality: parsed.quality || link.quality || '720p',
                 source: parsed.source.toUpperCase() as VideoSource,
                 language: link.language || 'uk',
@@ -90,30 +112,34 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
         }
       }
 
-      if (movieData.episodes && Array.isArray(movieData.episodes)) {
+      if (body.episodes && Array.isArray(body.episodes)) {
         movieData.episodes = {
-          create: movieData.episodes.map((ep: any) => ({
-            episodeNumber: ep.episodeNumber,
-            seasonNumber: ep.seasonNumber,
-            title: ep.title,
-            description: ep.description,
-            duration: ep.duration,
-            thumbnail: ep.thumbnail,
-            videoLinks: ep.videoLinks ? {
-              create: ep.videoLinks.map((vl: any) => ({
-                url: vl.url,
-                quality: vl.quality || '720p',
-                source: 'EMBED' as VideoSource,
-                language: 'uk',
-                isActive: true,
-              })),
-            } : undefined,
-          })),
+          create: body.episodes.map((ep: EpisodeCreateInput) => {
+            const episodeData: Prisma.EpisodeUncheckedCreateWithoutMovieInput = {
+              episodeNumber: ep.episodeNumber,
+              seasonNumber: ep.seasonNumber,
+              title: ep.title,
+              description: ep.description ?? null,
+              duration: ep.duration ?? null,
+              thumbnail: ep.thumbnail ?? null,
+            }
+            if (ep.videoLinks && ep.videoLinks.length > 0) {
+              return {
+                ...episodeData,
+                videoLinks: {
+                  create: ep.videoLinks.map((vl: VideoLinkCreateInput) => ({
+                    url: vl.url,
+                    quality: vl.quality || '720p',
+                    source: 'EMBED' as VideoSource,
+                    language: 'uk',
+                    isActive: true,
+                  })),
+                },
+              } as Prisma.EpisodeCreateWithoutMovieInput
+            }
+            return episodeData as Prisma.EpisodeCreateWithoutMovieInput
+          }),
         }
-      }
-
-      if (movieData.type) {
-        movieData.type = movieData.type.toUpperCase() === 'MOVIE' ? MovieType.MOVIE : MovieType.SERIES
       }
 
       const movie = await prisma.movie.create({
@@ -129,8 +155,11 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
       })
 
       return res.status(201).json({ movie })
-    } catch (error: any) {
-      return res.status(500).json({ error: 'Failed to create movie', details: error.message })
+    } catch (error: unknown) {
+      return res.status(500).json({
+        error: 'Failed to create movie',
+        details: getErrorDetails(error) || getErrorMessage(error),
+      })
     }
   }
 

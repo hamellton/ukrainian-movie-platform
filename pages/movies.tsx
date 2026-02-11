@@ -1,7 +1,9 @@
-import { useState } from 'react'
+import { useEffect } from 'react'
+import { useRouter } from 'next/router'
 import useSWR from 'swr'
 import MovieCard from '@/components/MovieCard/MovieCard'
 import GenreFilter from '@/components/GenreFilter/GenreFilter'
+import { useFiltersStore } from '@/stores/filtersStore'
 import { Movie } from '@prisma/client'
 
 interface MoviesResponse {
@@ -17,8 +19,17 @@ interface MoviesResponse {
 const fetcher = (url: string) => fetch(url).then((res) => res.json())
 
 export default function MoviesPage() {
-  const [page, setPage] = useState(1)
-  const [genre, setGenre] = useState<string>('')
+  const router = useRouter()
+  const { page, genre, setPage, setFilters } = useFiltersStore()
+
+  useEffect(() => {
+    if (!router.isReady) return
+    const q = router.query
+    setFilters({
+      page: q.page ? Number(q.page) : 1,
+      genre: (q.genre as string) || '',
+    })
+  }, [router.isReady, router.query, setFilters])
 
   const { data, error, isLoading } = useSWR<MoviesResponse>(
     `/api/movies?page=${page}&limit=20&type=movie&genre=${genre}&sort=-releaseDate`,
@@ -27,6 +38,11 @@ export default function MoviesPage() {
 
   const movies = data?.movies || []
   const pagination = data?.pagination
+
+  const handlePageChange = (newPage: number) => {
+    setPage(newPage)
+    router.push({ pathname: '/movies', query: { ...router.query, page: String(newPage) } })
+  }
 
   return (
     <main className="min-h-screen bg-black">
@@ -59,7 +75,7 @@ export default function MoviesPage() {
             {pagination && pagination.pages > 1 && (
               <div className="flex justify-center gap-2 mt-8">
                 <button
-                  onClick={() => setPage(Math.max(1, page - 1))}
+                  onClick={() => handlePageChange(Math.max(1, page - 1))}
                   disabled={page === 1}
                   className="px-4 py-2 bg-gray-800 text-white rounded disabled:opacity-50"
                 >
@@ -69,7 +85,7 @@ export default function MoviesPage() {
                   {page} з {pagination.pages}
                 </span>
                 <button
-                  onClick={() => setPage(Math.min(pagination.pages, page + 1))}
+                  onClick={() => handlePageChange(Math.min(pagination.pages, page + 1))}
                   disabled={page === pagination.pages}
                   className="px-4 py-2 bg-gray-800 text-white rounded disabled:opacity-50"
                 >

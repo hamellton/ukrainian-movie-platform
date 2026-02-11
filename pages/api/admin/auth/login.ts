@@ -51,7 +51,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         role: admin.role,
       },
     })
-  } catch (error: any) {
-    return res.status(500).json({ error: 'Login failed', details: error.message })
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Login failed'
+    return res.status(500).json({ error: 'Login failed', details: errorMessage })
   }
 }

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import ReactPlayer from 'react-player'
 import useSWR from 'swr'
 import { VideoLink, AdConfig } from '@prisma/client'
@@ -27,7 +27,7 @@ export default function VideoPlayer({ movieId, episodeNumber, seasonNumber, onEn
   const { data: adsData } = useSWR<{ ads: AdConfig[] }>('/api/ads', fetcher)
 
   const videoLinks = videoData?.videoLinks || []
-  const ads = adsData?.ads || []
+  const ads = useMemo(() => adsData?.ads || [], [adsData?.ads])
 
   useEffect(() => {
     if (showPreRoll && ads.length > 0) {
@@ -86,6 +86,23 @@ export default function VideoPlayer({ movieId, episodeNumber, seasonNumber, onEn
     }
   }
 
+  const isSpecializedHost = (url: string): boolean => {
+    const specializedHosts = [
+      'ashdi.vip',
+      'tortuga.wtf',
+      'vidstreaming.io',
+      'streamtape.com',
+      'mixdrop.co',
+      'upstream.to',
+      'streamlare.com',
+      'filemoon.sx',
+      'doodstream.com',
+      'streamwish.to',
+      'streamhub.to',
+    ]
+    return specializedHosts.some(host => url.includes(host))
+  }
+
   if (!videoLinks.length) {
     return (
       <div className="w-full aspect-video bg-black flex items-center justify-center">
@@ -131,31 +148,39 @@ export default function VideoPlayer({ movieId, episodeNumber, seasonNumber, onEn
         </div>
       )}
 
-      <ReactPlayer
-        ref={playerRef}
-        url={currentVideo.url}
-        playing={playing && !showPreRoll && !showMidRoll && !showPostRoll}
-        controls={true}
-        width="100%"
-        height="100%"
-        onProgress={handleProgress}
-        onDuration={handleDuration}
-        onEnded={handleEnded}
-        onError={handleError}
-        config={{
-          youtube: {
-            playerVars: {
-              controls: 1,
-              modestbranding: 1,
+      {isSpecializedHost(currentVideo.url) ? (
+        <iframe
+          src={currentVideo.url.includes('ashdi.vip/vod/') 
+            ? currentVideo.url.replace('/vod/', '/embed/')
+            : currentVideo.url.startsWith('//') 
+            ? `https:${currentVideo.url}`
+            : currentVideo.url}
+          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
+          allowFullScreen
+          className="w-full h-full"
+          style={{ border: 'none' }}
+        />
+      ) : (
+        <ReactPlayer
+          ref={playerRef}
+          url={currentVideo.url}
+          playing={playing && !showPreRoll && !showMidRoll && !showPostRoll}
+          controls={true}
+          width="100%"
+          height="100%"
+          onProgress={handleProgress}
+          onDuration={handleDuration}
+          onEnded={handleEnded}
+          onError={handleError}
+          config={{
+            file: {
+              attributes: {
+                controlsList: 'nodownload',
+              },
             },
-          },
-          file: {
-            attributes: {
-              controlsList: 'nodownload',
-            },
-          },
-        }}
-      />
+          }}
+        />
+      )}
     </div>
   )
 }

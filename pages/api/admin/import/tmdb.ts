@@ -2,7 +2,10 @@ import { NextApiResponse } from 'next'
 import { prisma } from '@/lib/prisma'
 import { requireAuth, AuthenticatedRequest } from '@/middleware/auth'
 import { getPopularMovies, getPopularSeries, getMovieDetails, formatMovieFromTMDB, searchMovies } from '@/utils/tmdb'
-import { MovieType } from '@prisma/client'
+import { searchVideoLinks } from '@/utils/videoParser'
+import { MovieType, VideoSource } from '@prisma/client'
+import { TmdbMovieResult } from '@/types'
+import { getErrorMessage, getErrorDetails } from '@/utils/errorHandler'
 
 async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
   if (req.method === 'POST') {
@@ -27,11 +30,32 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
           return res.status(400).json({ error: 'Movie already exists', movie: existingMovie })
         }
 
+        const releaseYear = formattedData.releaseDate 
+          ? new Date(formattedData.releaseDate).getFullYear() 
+          : undefined
+
+        const autoFoundLinks = await searchVideoLinks(
+          formattedData.titleOriginal || formattedData.title,
+          releaseYear
+        )
+
+        const videoLinksData = autoFoundLinks.length > 0 
+          ? {
+              create: autoFoundLinks.map(url => ({
+                url,
+                quality: '720p',
+                source: 'EMBED' as VideoSource,
+                language: 'uk',
+                isActive: true,
+              }))
+            }
+          : undefined
+
         const movie = await prisma.movie.create({
           data: {
             title: formattedData.title,
             titleOriginal: formattedData.titleOriginal,
-            description: formattedData.description || 'Опис відсутній',
+            description: formattedData.description || formattedData.title || 'Опис відсутній',
             descriptionShort: formattedData.descriptionShort,
             poster: formattedData.poster,
             backdrop: formattedData.backdrop,
@@ -44,10 +68,18 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
             type: movieType === 'movie' ? MovieType.MOVIE : MovieType.SERIES,
             tmdbId: formattedData.tmdbId,
             imdbId: formattedData.imdbId || null,
+            videoLinks: videoLinksData,
+          },
+          include: {
+            videoLinks: true,
           },
         })
 
-        return res.status(201).json({ movie, imported: true })
+        return res.status(201).json({ 
+          movie, 
+          imported: true,
+          autoFoundLinks: autoFoundLinks.length,
+        })
       }
 
       if (searchQuery) {
@@ -57,7 +89,7 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
           return res.status(404).json({ error: 'No results found' })
         }
 
-        const results = searchResults.results.map((item: any) => ({
+        const results = searchResults.results.map((item: TmdbMovieResult) => ({
           id: item.id,
           title: item.title || item.name,
           overview: item.overview,
@@ -76,11 +108,11 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
         ])
 
         const allResults = [
-          ...(moviesData?.results || []).map((item: any) => ({
+          ...(moviesData?.results || []).map((item: TmdbMovieResult) => ({
             ...item,
             mediaType: 'movie',
           })),
-          ...(seriesData?.results || []).map((item: any) => ({
+          ...(seriesData?.results || []).map((item: TmdbMovieResult) => ({
             ...item,
             mediaType: 'tv',
           })),
@@ -122,12 +154,12 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
       }
 
       return res.status(400).json({ error: 'Invalid request parameters' })
-    } catch (error: any) {
-      const errorMessage = error.message || 'Import failed'
+    } catch (error: unknown) {
+      const errorMessage = getErrorMessage(error)
       if (errorMessage.includes('TMDB_API_KEY')) {
-        return res.status(400).json({ 
-          error: 'TMDB API Key не настроен', 
-          details: 'Додайте TMDB_API_KEY в файл .env. Інструкція: https://www.themoviedb.org/settings/api' 
+        return res.status(400).json({
+          error: 'TMDB API Key не настроен',
+          details: 'Додайте TMDB_API_KEY в файл .env. Інструкція: https://www.themoviedb.org/settings/api',
         })
       }
       return res.status(500).json({ error: 'Import failed', details: errorMessage })
@@ -157,8 +189,14 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
       const { parseVideoUrl, validateVideoUrl } = await import('@/utils/videoParser')
       const { VideoSource } = await import('@prisma/client')
 
-      const validatedLinks = []
-      for (const link of videoLinks) {
+      const validatedLinks: Array<{
+        url: string
+        quality: string
+        source: VideoSource
+        language: string
+        isActive: boolean
+      }> = []
+      for (const link of videoLinks as Array<{ url: string; quality?: string }>) {
         if (validateVideoUrl(link.url)) {
           const parsed = await parseVideoUrl(link.url)
           if (parsed) {
@@ -186,8 +224,11 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
       })
 
       return res.status(200).json({ movie: updatedMovie })
-    } catch (error: any) {
-      return res.status(500).json({ error: 'Failed to update video links', details: error.message })
+    } catch (error: unknown) {
+      return res.status(500).json({
+        error: 'Failed to update video links',
+        details: getErrorDetails(error) || getErrorMessage(error),
+      })
     }
   }
 

@@ -1,7 +1,9 @@
-import { useState } from 'react'
+import { useEffect } from 'react'
+import { useRouter } from 'next/router'
 import useSWR from 'swr'
 import MovieCard from '@/components/MovieCard/MovieCard'
 import GenreFilter from '@/components/GenreFilter/GenreFilter'
+import { useFiltersStore, type CatalogType } from '@/stores/filtersStore'
 import { Movie } from '@prisma/client'
 
 interface MoviesResponse {
@@ -17,9 +19,18 @@ interface MoviesResponse {
 const fetcher = (url: string) => fetch(url).then((res) => res.json())
 
 export default function Home() {
-  const [page, setPage] = useState(1)
-  const [type, setType] = useState<string>('')
-  const [genre, setGenre] = useState<string>('')
+  const router = useRouter()
+  const { page, type, genre, setPage, setType, setFilters } = useFiltersStore()
+
+  useEffect(() => {
+    if (!router.isReady) return
+    const q = router.query
+    setFilters({
+      page: q.page ? Number(q.page) : 1,
+      type: (q.type as CatalogType) || '',
+      genre: (q.genre as string) || '',
+    })
+  }, [router.isReady, router.query, setFilters])
 
   const { data, error, isLoading } = useSWR<MoviesResponse>(
     `/api/movies?page=${page}&limit=20&type=${type}&genre=${genre}&sort=-views`,
@@ -29,6 +40,21 @@ export default function Home() {
   const movies = data?.movies || []
   const pagination = data?.pagination
 
+  const handleTypeChange = (newType: CatalogType) => {
+    setType(newType)
+    const query: Record<string, string> = { ...(router.query as Record<string, string>) }
+    query.type = newType
+    query.page = '1'
+    if (!newType) delete query.type
+    router.push({ pathname: '/', query })
+  }
+
+  const handlePageChange = (newPage: number) => {
+    setPage(newPage)
+    const query = { ...(router.query as Record<string, string>), page: String(newPage) }
+    router.push({ pathname: '/', query })
+  }
+
   return (
     <main className="min-h-screen bg-black">
       <div className="container mx-auto px-4 py-8">
@@ -36,7 +62,7 @@ export default function Home() {
           <h1 className="text-4xl font-bold text-white mb-4">Популярні фільми та серіали</h1>
           <div className="flex gap-4 mb-6">
             <button
-              onClick={() => setType('')}
+              onClick={() => handleTypeChange('')}
               className={`px-4 py-2 rounded ${
                 type === '' ? 'bg-primary text-white' : 'bg-gray-800 text-gray-300'
               }`}
@@ -44,7 +70,7 @@ export default function Home() {
               Всі
             </button>
             <button
-              onClick={() => setType('movie')}
+              onClick={() => handleTypeChange('movie')}
               className={`px-4 py-2 rounded ${
                 type === 'movie' ? 'bg-primary text-white' : 'bg-gray-800 text-gray-300'
               }`}
@@ -52,7 +78,7 @@ export default function Home() {
               Фільми
             </button>
             <button
-              onClick={() => setType('series')}
+              onClick={() => handleTypeChange('series')}
               className={`px-4 py-2 rounded ${
                 type === 'series' ? 'bg-primary text-white' : 'bg-gray-800 text-gray-300'
               }`}
@@ -86,7 +112,7 @@ export default function Home() {
             {pagination && pagination.pages > 1 && (
               <div className="flex justify-center gap-2 mt-8">
                 <button
-                  onClick={() => setPage(Math.max(1, page - 1))}
+                  onClick={() => handlePageChange(Math.max(1, page - 1))}
                   disabled={page === 1}
                   className="px-4 py-2 bg-gray-800 text-white rounded disabled:opacity-50"
                 >
@@ -96,7 +122,7 @@ export default function Home() {
                   {page} з {pagination.pages}
                 </span>
                 <button
-                  onClick={() => setPage(Math.min(pagination.pages, page + 1))}
+                  onClick={() => handlePageChange(Math.min(pagination.pages, page + 1))}
                   disabled={page === pagination.pages}
                   className="px-4 py-2 bg-gray-800 text-white rounded disabled:opacity-50"
                 >
