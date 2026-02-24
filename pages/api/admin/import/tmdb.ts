@@ -1,10 +1,10 @@
 import { NextApiResponse } from 'next'
 import { prisma } from '@/lib/prisma'
 import { requireAuth, AuthenticatedRequest } from '@/middleware/auth'
-import { getPopularMovies, getPopularSeries, getMovieDetails, formatMovieFromTMDB, searchMovies } from '@/utils/tmdb'
+import { getPopularMovies, getPopularSeries, getPopularAnimatedMovies, getPopularAnimatedSeries, getMovieDetails, formatMovieFromTMDB, searchMovies } from '@/utils/tmdb'
 import { searchVideoLinks } from '@/utils/videoParser'
 import { MovieType, VideoSource } from '@prisma/client'
-import { TmdbMovieResult } from '@/types'
+import { TmdbMovieResult, TmdbMovieDetails } from '@/types'
 import { getErrorMessage, getErrorDetails } from '@/utils/errorHandler'
 
 async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
@@ -13,7 +13,11 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
       const { type, page = 1, tmdbId, searchQuery } = req.body
 
       if (tmdbId) {
-        const movieType = type === 'series' ? 'tv' : 'movie'
+        if (!type || (type !== 'tv' && type !== 'movie' && type !== 'series')) {
+          return res.status(400).json({ error: 'Type is required and must be "movie" or "tv"' })
+        }
+        
+        const movieType: 'movie' | 'tv' = type === 'tv' || type === 'series' ? 'tv' : 'movie'
         const tmdbData = await getMovieDetails(tmdbId, movieType)
         
         if (!tmdbData) {
@@ -51,6 +55,27 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
             }
           : undefined
 
+        const episodesData = movieType === 'tv' && tmdbData.seasons 
+          ? {
+              create: tmdbData.seasons
+                .filter(season => season.season_number > 0)
+                .flatMap(season => {
+                  const episodes = []
+                  for (let i = 1; i <= season.episode_count; i++) {
+                    episodes.push({
+                      seasonNumber: season.season_number,
+                      episodeNumber: i,
+                      title: `Сезон ${season.season_number}, Епізод ${i}`,
+                      description: season.overview || null,
+                      duration: tmdbData.episode_run_time?.[0] || null,
+                      thumbnail: season.poster_path ? `https://image.tmdb.org/t/p/w500${season.poster_path}` : null,
+                    })
+                  }
+                  return episodes
+                })
+            }
+          : undefined
+
         const movie = await prisma.movie.create({
           data: {
             title: formattedData.title,
@@ -65,13 +90,31 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
             rating: formattedData.rating || 0,
             ratingCount: formattedData.ratingCount || 0,
             duration: formattedData.duration || null,
-            type: movieType === 'movie' ? MovieType.MOVIE : MovieType.SERIES,
+            type: (() => {
+              const formattedType = formattedData.type
+              switch (formattedType) {
+                case 'SERIES':
+                  return MovieType.SERIES
+                case 'ANIMATED_SERIES':
+                  return MovieType.ANIMATED_SERIES
+                case 'ANIMATED_MOVIE':
+                  return MovieType.ANIMATED_MOVIE
+                default:
+                  return MovieType.MOVIE
+              }
+            })(),
             tmdbId: formattedData.tmdbId,
             imdbId: formattedData.imdbId || null,
             videoLinks: videoLinksData,
+            episodes: episodesData,
           },
           include: {
             videoLinks: true,
+            episodes: {
+              include: {
+                videoLinks: true,
+              },
+            },
           },
         })
 
@@ -89,14 +132,28 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
           return res.status(404).json({ error: 'No results found' })
         }
 
-        const results = searchResults.results.map((item: TmdbMovieResult) => ({
-          id: item.id,
-          title: item.title || item.name,
-          overview: item.overview,
-          poster: item.poster_path ? `https://image.tmdb.org/t/p/w500${item.poster_path}` : null,
-          releaseDate: item.release_date || item.first_air_date,
-          mediaType: item.media_type || (item.title ? 'movie' : 'tv'),
-        }))
+        const results = searchResults.results.map((item: TmdbMovieResult) => {
+          let mediaType = item.media_type
+          
+          if (!mediaType) {
+            if (item.title && !item.name) {
+              mediaType = 'movie'
+            } else if (item.name && !item.title) {
+              mediaType = 'tv'
+            } else {
+              mediaType = item.first_air_date ? 'tv' : 'movie'
+            }
+          }
+          
+          return {
+            id: item.id,
+            title: item.title || item.name,
+            overview: item.overview,
+            poster: item.poster_path ? `https://image.tmdb.org/t/p/w500${item.poster_path}` : null,
+            releaseDate: item.release_date || item.first_air_date,
+            mediaType: mediaType,
+          }
+        })
 
         return res.status(200).json({ results, totalPages: searchResults.total_pages })
       }
@@ -150,6 +207,40 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
           results: seriesData.results,
           page: seriesData.page,
           totalPages: seriesData.total_pages,
+        })
+      }
+
+      if (type === 'animated-movies') {
+        const animatedMoviesData = await getPopularAnimatedMovies(page)
+        
+        if (!animatedMoviesData || !animatedMoviesData.results) {
+          return res.status(404).json({ error: 'No animated movies found' })
+        }
+
+        return res.status(200).json({
+          results: animatedMoviesData.results.map((item: TmdbMovieResult) => ({
+            ...item,
+            mediaType: 'movie',
+          })),
+          page: animatedMoviesData.page,
+          totalPages: animatedMoviesData.total_pages,
+        })
+      }
+
+      if (type === 'animated-series') {
+        const animatedSeriesData = await getPopularAnimatedSeries(page)
+        
+        if (!animatedSeriesData || !animatedSeriesData.results) {
+          return res.status(404).json({ error: 'No animated series found' })
+        }
+
+        return res.status(200).json({
+          results: animatedSeriesData.results.map((item: TmdbMovieResult) => ({
+            ...item,
+            mediaType: 'tv',
+          })),
+          page: animatedSeriesData.page,
+          totalPages: animatedSeriesData.total_pages,
         })
       }
 

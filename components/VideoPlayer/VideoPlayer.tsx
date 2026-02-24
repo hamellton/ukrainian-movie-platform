@@ -30,17 +30,18 @@ export default function VideoPlayer({ movieId, episodeNumber, seasonNumber, onEn
   const ads = useMemo(() => adsData?.ads || [], [adsData?.ads])
 
   useEffect(() => {
-    if (showPreRoll && ads.length > 0) {
+    if (showPreRoll && adsData !== undefined) {
       const preRollAd = ads.find(ad => ad.type === 'PRE_ROLL' && ad.isActive)
       if (preRollAd) {
-        setTimeout(() => {
+        const timer = setTimeout(() => {
           setShowPreRoll(false)
         }, 5000)
+        return () => clearTimeout(timer)
       } else {
         setShowPreRoll(false)
       }
     }
-  }, [showPreRoll, ads])
+  }, [showPreRoll, ads, adsData])
 
   useEffect(() => {
     if (played > 0 && duration > 0 && !showMidRoll) {
@@ -90,6 +91,7 @@ export default function VideoPlayer({ movieId, episodeNumber, seasonNumber, onEn
     const specializedHosts = [
       'ashdi.vip',
       'tortuga.wtf',
+      'tortuga.tw',
       'vidstreaming.io',
       'streamtape.com',
       'mixdrop.co',
@@ -150,13 +152,21 @@ export default function VideoPlayer({ movieId, episodeNumber, seasonNumber, onEn
 
       {isSpecializedHost(currentVideo.url) ? (
         <iframe
-          src={currentVideo.url.includes('ashdi.vip/vod/') 
-            ? currentVideo.url.replace('/vod/', '/embed/')
-            : currentVideo.url.startsWith('//') 
-            ? `https:${currentVideo.url}`
-            : currentVideo.url}
-          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
+          src={(() => {
+            let url = currentVideo.url.startsWith('//') 
+              ? `https:${currentVideo.url}`
+              : currentVideo.url
+            
+            if (url.includes('ashdi.vip/embed/')) {
+              url = url.replace('/embed/', '/vod/')
+            }
+            
+            return url
+          })()}
+          allow="autoplay"
           allowFullScreen
+          scrolling="no"
+          frameBorder="0"
           className="w-full h-full"
           style={{ border: 'none' }}
         />

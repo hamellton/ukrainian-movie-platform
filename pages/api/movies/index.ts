@@ -18,12 +18,62 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
       const where: PrismaMovieWhereInput = { isActive: true }
 
-      if (type && (type === 'movie' || type === 'series')) {
-        where.type = type === 'movie' ? MovieType.MOVIE : MovieType.SERIES
+      if (type && typeof type === 'string') {
+        const types = type.split(',').map(t => t.trim())
+        if (types.length > 1) {
+          where.type = { in: types.map(t => {
+            switch (t) {
+              case 'movie':
+                return MovieType.MOVIE
+              case 'series':
+                return MovieType.SERIES
+              case 'animated-movie':
+                return MovieType.ANIMATED_MOVIE
+              case 'animated-series':
+                return MovieType.ANIMATED_SERIES
+              case 'collection':
+                return MovieType.COLLECTION
+              default:
+                return null
+            }
+          }).filter(Boolean) as MovieType[] }
+        } else {
+          switch (type) {
+            case 'movie':
+              where.type = MovieType.MOVIE
+              break
+            case 'series':
+              where.type = MovieType.SERIES
+              break
+            case 'animated-movie':
+              where.type = MovieType.ANIMATED_MOVIE
+              break
+            case 'animated-series':
+              where.type = MovieType.ANIMATED_SERIES
+              break
+            case 'collection':
+              where.type = MovieType.COLLECTION
+              break
+          }
+        }
       }
 
       if (genre && typeof genre === 'string') {
-        where.genres = { has: genre }
+        const genreVariants: Record<string, string[]> = {
+          'Фантастика': ['Фантастика', 'Науково фантастичний', 'Наукова фантастика', 'Science Fiction', 'Sci-Fi'],
+          'Детектив': ['Детектив', 'Mystery', 'Crime'],
+          'Бойовик': ['Бойовик', 'Екшн', 'Action'],
+          'Пригоди': ['Пригоди', 'Adventure'],
+          'Комедія': ['Комедія', 'Comedy'],
+          'Драма': ['Драма', 'Drama'],
+          'Жахи': ['Жахи', 'Horror'],
+          'Трилер': ['Трилер', 'Thriller'],
+          'Романтика': ['Романтика', 'Romance', 'Мелодрама'],
+          'Анімація': ['Анімація', 'Animation', 'Мультфільм', 'Мультиплікація'],
+        }
+        
+        const variants = genreVariants[genre] || [genre]
+        where.genres = { hasSome: variants }
       }
 
       if (search && typeof search === 'string') {
@@ -112,7 +162,20 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           countries: body.countries || [],
           rating: body.rating || 0,
           duration: body.duration,
-          type: body.type === 'SERIES' ? MovieType.SERIES : MovieType.MOVIE,
+          type: (() => {
+            switch (body.type) {
+              case 'SERIES':
+                return MovieType.SERIES
+              case 'ANIMATED_SERIES':
+                return MovieType.ANIMATED_SERIES
+              case 'ANIMATED_MOVIE':
+                return MovieType.ANIMATED_MOVIE
+              case 'COLLECTION':
+                return MovieType.COLLECTION
+              default:
+                return MovieType.MOVIE
+            }
+          })(),
           tmdbId: body.tmdbId,
           imdbId: body.imdbId,
         },

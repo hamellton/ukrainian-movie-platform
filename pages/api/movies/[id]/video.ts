@@ -35,7 +35,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
       let videoLinks: VideoLink[] = []
 
-      if (movie.type === 'SERIES' && episodeNumber && seasonNumber) {
+      if ((movie.type === 'SERIES' || movie.type === 'ANIMATED_SERIES') && episodeNumber && seasonNumber) {
         const episodeNum = typeof episodeNumber === 'string' ? parseInt(episodeNumber) : undefined
         const seasonNum = typeof seasonNumber === 'string' ? parseInt(seasonNumber) : undefined
 

@@ -43,11 +43,12 @@ export async function getMovieDetails(tmdbId: number, type: 'movie' | 'tv' = 'mo
   }
   try {
     const endpoint = type === 'movie' ? 'movie' : 'tv'
+    const appendToResponse = type === 'tv' ? 'videos,images,seasons' : 'videos,images'
     const response = await axios.get<TmdbMovieDetails>(`${TMDB_BASE_URL}/${endpoint}/${tmdbId}`, {
       params: {
         api_key: TMDB_API_KEY,
         language: 'uk-UA',
-        append_to_response: 'videos,images',
+        append_to_response: appendToResponse,
       },
     })
     return response.data
@@ -92,6 +93,46 @@ export async function getPopularSeries(page: number = 1): Promise<TmdbSearchResp
   }
 }
 
+export async function getPopularAnimatedMovies(page: number = 1): Promise<TmdbSearchResponse> {
+  if (!TMDB_API_KEY) {
+    throw new Error('TMDB_API_KEY is not configured. Please add it to .env file')
+  }
+  try {
+    const response = await axios.get<TmdbSearchResponse>(`${TMDB_BASE_URL}/discover/movie`, {
+      params: {
+        api_key: TMDB_API_KEY,
+        page: page,
+        language: 'uk-UA',
+        with_genres: '16',
+        sort_by: 'popularity.desc',
+      },
+    })
+    return response.data
+  } catch (error) {
+    handleTmdbError(error, 'popular animated movies')
+  }
+}
+
+export async function getPopularAnimatedSeries(page: number = 1): Promise<TmdbSearchResponse> {
+  if (!TMDB_API_KEY) {
+    throw new Error('TMDB_API_KEY is not configured. Please add it to .env file')
+  }
+  try {
+    const response = await axios.get<TmdbSearchResponse>(`${TMDB_BASE_URL}/discover/tv`, {
+      params: {
+        api_key: TMDB_API_KEY,
+        page: page,
+        language: 'uk-UA',
+        with_genres: '16',
+        sort_by: 'popularity.desc',
+      },
+    })
+    return response.data
+  } catch (error) {
+    handleTmdbError(error, 'popular animated series')
+  }
+}
+
 export async function getGenres(type: 'movie' | 'tv' = 'movie'): Promise<TmdbGenreType[]> {
   try {
     const endpoint = type === 'movie' ? 'movie' : 'tv'
@@ -118,8 +159,69 @@ export function getBackdropUrl(path: string | null, size: string = 'w1280'): str
   return `${TMDB_IMAGE_BASE}/${size}${path}`
 }
 
+function mapGenreToStandard(genreName: string): string {
+  const normalized = genreName.trim().toLowerCase()
+  
+  if (normalized.includes('фантастик') || normalized.includes('science fiction') || normalized.includes('sci-fi')) {
+    return 'Фантастика'
+  }
+  
+  if (normalized.includes('детектив') || normalized.includes('mystery') || normalized.includes('crime')) {
+    return 'Детектив'
+  }
+  
+  if (normalized.includes('екшн') || normalized.includes('бойов') || normalized.includes('action')) {
+    return 'Бойовик'
+  }
+  
+  if (normalized.includes('пригод') || normalized.includes('adventure')) {
+    return 'Пригоди'
+  }
+  
+  if (normalized.includes('комед') || normalized.includes('comedy')) {
+    return 'Комедія'
+  }
+  
+  if (normalized.includes('драм') && !normalized.includes('мелодрам')) {
+    return 'Драма'
+  }
+  
+  if (normalized.includes('жах') || normalized.includes('horror')) {
+    return 'Жахи'
+  }
+  
+  if (normalized.includes('трилер') || normalized.includes('thriller')) {
+    return 'Трилер'
+  }
+  
+  if (normalized.includes('романт') || normalized.includes('romance') || normalized.includes('мелодрам')) {
+    return 'Романтика'
+  }
+  
+  if (normalized.includes('анімац') || normalized.includes('animation') || normalized.includes('мульт')) {
+    return 'Анімація'
+  }
+  
+  return genreName.trim()
+}
+
 export function formatMovieFromTMDB(tmdbData: TmdbMovieDetails, type: 'movie' | 'tv' = 'movie') {
   const overview = tmdbData.overview || ''
+  const genres = tmdbData.genres || []
+  
+  const hasAnimationGenre = genres.some((g) => g && g.id === 16)
+  
+  let movieType: 'MOVIE' | 'SERIES' | 'ANIMATED_MOVIE' | 'ANIMATED_SERIES'
+  
+  if (type === 'tv') {
+    movieType = hasAnimationGenre ? 'ANIMATED_SERIES' : 'SERIES'
+  } else {
+    movieType = hasAnimationGenre ? 'ANIMATED_MOVIE' : 'MOVIE'
+  }
+  
+  const mappedGenres = genres.map((g) => mapGenreToStandard(g.name))
+  const uniqueGenres = Array.from(new Set(mappedGenres))
+  
   return {
     title: tmdbData.title || tmdbData.name || '',
     titleOriginal: tmdbData.original_title || tmdbData.original_name || '',
@@ -128,12 +230,12 @@ export function formatMovieFromTMDB(tmdbData: TmdbMovieDetails, type: 'movie' | 
     poster: getImageUrl(tmdbData.poster_path ?? null),
     backdrop: getBackdropUrl(tmdbData.backdrop_path ?? null),
     releaseDate: tmdbData.release_date || tmdbData.first_air_date || '',
-    genres: (tmdbData.genres || []).map((g) => g.name),
+    genres: uniqueGenres,
     countries: (tmdbData.production_countries || []).map((c) => c.name),
     rating: tmdbData.vote_average || 0,
     ratingCount: tmdbData.vote_count || 0,
     duration: tmdbData.runtime || (tmdbData.episode_run_time && tmdbData.episode_run_time[0]) || 0,
-    type: type === 'movie' ? 'MOVIE' : 'SERIES',
+    type: movieType,
     tmdbId: tmdbData.id,
     imdbId: tmdbData.imdb_id,
   }

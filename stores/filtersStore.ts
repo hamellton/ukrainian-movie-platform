@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 
-export type CatalogType = '' | 'movie' | 'series'
+export type CatalogType = '' | 'series' | 'animated-series' | 'movie' | 'animated-movie' | 'collection'
 
 interface FiltersState {
   page: number

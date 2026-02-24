@@ -18,7 +18,7 @@ interface MoviesResponse {
 
 const fetcher = (url: string) => fetch(url).then((res) => res.json())
 
-export default function SeriesPage() {
+export default function AnimatedSeriesPage() {
   const router = useRouter()
   const { page, genre, setPage, setFilters } = useFiltersStore()
 
@@ -32,7 +32,7 @@ export default function SeriesPage() {
   }, [router.isReady, router.query, setFilters])
 
   const { data, error, isLoading } = useSWR<MoviesResponse>(
-    `/api/movies?page=${page}&limit=20&type=series,animated-series&genre=${genre}&sort=-releaseDate`,
+    `/api/movies?page=${page}&limit=20&type=animated-series&genre=${genre}&sort=-releaseDate`,
     fetcher
   )
 
@@ -41,14 +41,14 @@ export default function SeriesPage() {
 
   const handlePageChange = (newPage: number) => {
     setPage(newPage)
-    router.push({ pathname: '/series', query: { ...router.query, page: String(newPage) } })
+    router.push({ pathname: '/animated-series', query: { ...router.query, page: String(newPage) } })
   }
 
   return (
     <main className="min-h-screen bg-black">
       <div className="container mx-auto px-4 py-8">
         <div className="mb-8">
-          <h1 className="text-4xl font-bold text-white mb-6">Серіали та Мультсеріали</h1>
+          <h1 className="text-4xl font-bold text-white mb-6">Мультсеріали</h1>
           <GenreFilter />
         </div>
 
@@ -62,7 +62,7 @@ export default function SeriesPage() {
           </div>
         ) : series.length === 0 ? (
           <div className="text-center py-12">
-            <p className="text-gray-400">Серіали не знайдено</p>
+            <p className="text-gray-400">Мультсеріали не знайдено</p>
           </div>
         ) : (
           <>

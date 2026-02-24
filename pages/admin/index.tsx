@@ -69,6 +69,18 @@ export default function AdminPanel() {
         .filter(Boolean)
         .map((url) => ({ url, quality: '720p' }))
 
+      const episodesArray = formData.episodes.map((ep) => ({
+        seasonNumber: ep.seasonNumber,
+        episodeNumber: ep.episodeNumber,
+        title: ep.title,
+        description: ep.description || undefined,
+        videoLinks: ep.videoLinks
+          .split('\n')
+          .map((url) => url.trim())
+          .filter(Boolean)
+          .map((url) => ({ url, quality: '720p' })),
+      }))
+
       const movieData = {
         title: formData.title,
         titleOriginal: formData.titleOriginal || undefined,
@@ -79,10 +91,11 @@ export default function AdminPanel() {
         releaseDate: new Date(formData.releaseDate).toISOString(),
         genres: formData.genres.split(',').map((g) => g.trim()).filter(Boolean),
         countries: formData.countries.split(',').map((c) => c.trim()).filter(Boolean),
-        rating: formData.rating ? parseFloat(formData.rating) : 0,
+        rating: formData.rating ? parseFloat(formData.rating.replace(',', '.')) || 0 : 0,
         duration: formData.duration ? parseInt(formData.duration) : undefined,
         type: formData.type,
         videoLinks: videoLinksArray,
+        episodes: (formData.type === 'SERIES' || formData.type === 'ANIMATED_SERIES') ? episodesArray : undefined,
       }
 
       if (editingMovie) {
@@ -315,7 +328,11 @@ export default function AdminPanel() {
                       <tr key={movie.id} className="border-b border-gray-800">
                         <td className="py-3 text-white">{movie.title}</td>
                         <td className="py-3 text-gray-300">
-                          {movie.type === 'MOVIE' ? 'Фільм' : 'Серіал'}
+                          {movie.type === 'MOVIE' ? 'Фільм' : 
+                           movie.type === 'SERIES' ? 'Серіал' :
+                           movie.type === 'ANIMATED_MOVIE' ? 'Мультфільм' :
+                           movie.type === 'ANIMATED_SERIES' ? 'Мультсеріал' :
+                           movie.type === 'COLLECTION' ? 'Добірка' : 'Невідомо'}
                         </td>
                         <td className="py-3 text-gray-300">{movie.views || 0}</td>
                         <td className="py-3">
@@ -426,12 +443,19 @@ export default function AdminPanel() {
                 <div>
                   <label className="block text-gray-300 mb-2">Рейтинг</label>
                   <input
-                    type="number"
-                    step="0.1"
-                    min="0"
-                    max="10"
+                    type="text"
+                    inputMode="decimal"
+                    pattern="[0-9]+([.,][0-9]{1,3})?"
                     value={formData.rating}
-                    onChange={(e) => setFormData({ rating: e.target.value })}
+                    onChange={(e) => {
+                      const value = e.target.value.replace(',', '.')
+                      if (value === '' || /^\d*\.?\d{0,3}$/.test(value)) {
+                        const numValue = parseFloat(value)
+                        if (isNaN(numValue) || (numValue >= 0 && numValue <= 10)) {
+                          setFormData({ rating: value })
+                        }
+                      }
+                    }}
                     className="w-full px-4 py-2 bg-gray-800 text-white rounded"
                   />
                 </div>
@@ -474,33 +498,158 @@ export default function AdminPanel() {
                 <label className="block text-gray-300 mb-2">Тип *</label>
                 <select
                   value={formData.type}
-                  onChange={(e) => setFormData({ type: e.target.value as 'MOVIE' | 'SERIES' })}
+                  onChange={(e) => setFormData({ type: e.target.value as 'MOVIE' | 'SERIES' | 'ANIMATED_MOVIE' | 'ANIMATED_SERIES' | 'COLLECTION' })}
                   className="w-full px-4 py-2 bg-gray-800 text-white rounded"
                 >
                   <option value="MOVIE">Фільм</option>
                   <option value="SERIES">Серіал</option>
+                  <option value="ANIMATED_MOVIE">Мультфільм</option>
+                  <option value="ANIMATED_SERIES">Мультсеріал</option>
+                  <option value="COLLECTION">Добірка</option>
                 </select>
               </div>
 
-              <div>
-                <label className="block text-gray-300 mb-2">
-                  Посилання на відео (кожне з нового рядка) *
-                </label>
-                <textarea
-                  value={formData.videoLinks}
-                  onChange={(e) => setFormData({ videoLinks: e.target.value })}
-                  required
-                  rows={4}
-                  placeholder="https://ashdi.vip/vod/123&#10;https://tortuga.wtf/embed/abc&#10;https://example.com/video.mp4"
-                  className="w-full px-4 py-2 bg-gray-800 text-white rounded font-mono text-sm"
-                />
-                <p className="text-gray-400 text-sm mt-1">
-                  Підтримуються: ashdi.vip, tortuga.wtf, vidstreaming.io, streamtape.com, mixdrop.co та інші спеціалізовані хостинги, або прямі посилання (.mp4, .m3u8)
-                </p>
-                <p className="text-gray-500 text-xs mt-2">
-                  Як отримати посилання: знайдіть фільм на сайті (наприклад ashdi.vip), відкрийте сторінку фільму, скопіюйте URL з iframe або з атрибута data-file. Формат: https://ashdi.vip/vod/123 або //ashdi.vip/vod/123
-                </p>
-              </div>
+              {(formData.type === 'MOVIE' || formData.type === 'ANIMATED_MOVIE' || formData.type === 'COLLECTION') && (
+                <div>
+                  <label className="block text-gray-300 mb-2">
+                    Посилання на відео (кожне з нового рядка) *
+                  </label>
+                  <textarea
+                    value={formData.videoLinks}
+                    onChange={(e) => setFormData({ videoLinks: e.target.value })}
+                    required
+                    rows={4}
+                    placeholder="https://ashdi.vip/vod/123&#10;https://tortuga.wtf/embed/abc&#10;https://example.com/video.mp4"
+                    className="w-full px-4 py-2 bg-gray-800 text-white rounded font-mono text-sm"
+                  />
+                  <p className="text-gray-400 text-sm mt-1">
+                    Підтримуються: ashdi.vip, tortuga.wtf, vidstreaming.io, streamtape.com, mixdrop.co та інші спеціалізовані хостинги, або прямі посилання (.mp4, .m3u8)
+                  </p>
+                </div>
+              )}
+
+              {(formData.type === 'SERIES' || formData.type === 'ANIMATED_SERIES') && (
+                <div>
+                  <div className="flex justify-between items-center mb-4">
+                    <label className="block text-gray-300 text-lg font-semibold">
+                      Епізоди
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const newEpisode = {
+                          seasonNumber: 1,
+                          episodeNumber: formData.episodes.length + 1,
+                          title: '',
+                          description: '',
+                          videoLinks: '',
+                        }
+                        setFormData({ episodes: [...formData.episodes, newEpisode] })
+                      }}
+                      className="px-4 py-2 bg-primary text-white rounded hover:bg-primary/90 text-sm"
+                    >
+                      + Додати епізод
+                    </button>
+                  </div>
+
+                  {formData.episodes.length === 0 ? (
+                    <p className="text-gray-400 text-sm mb-4">
+                      Епізоди не додані. Натисніть "Додати епізод" щоб додати перший епізод.
+                    </p>
+                  ) : (
+                    <div className="space-y-4">
+                      {formData.episodes.map((episode, index) => (
+                        <div key={index} className="bg-gray-800 p-4 rounded-lg">
+                          <div className="grid grid-cols-4 gap-4 mb-4">
+                            <div>
+                              <label className="block text-gray-300 mb-1 text-sm">Сезон</label>
+                              <input
+                                type="number"
+                                value={episode.seasonNumber}
+                                onChange={(e) => {
+                                  const updated = [...formData.episodes]
+                                  updated[index].seasonNumber = parseInt(e.target.value) || 1
+                                  setFormData({ episodes: updated })
+                                }}
+                                min="1"
+                                className="w-full px-3 py-2 bg-gray-700 text-white rounded text-sm"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-gray-300 mb-1 text-sm">Епізод</label>
+                              <input
+                                type="number"
+                                value={episode.episodeNumber}
+                                onChange={(e) => {
+                                  const updated = [...formData.episodes]
+                                  updated[index].episodeNumber = parseInt(e.target.value) || 1
+                                  setFormData({ episodes: updated })
+                                }}
+                                min="1"
+                                className="w-full px-3 py-2 bg-gray-700 text-white rounded text-sm"
+                              />
+                            </div>
+                            <div className="col-span-2">
+                              <label className="block text-gray-300 mb-1 text-sm">Назва</label>
+                              <input
+                                type="text"
+                                value={episode.title}
+                                onChange={(e) => {
+                                  const updated = [...formData.episodes]
+                                  updated[index].title = e.target.value
+                                  setFormData({ episodes: updated })
+                                }}
+                                placeholder="Назва епізоду"
+                                className="w-full px-3 py-2 bg-gray-700 text-white rounded text-sm"
+                              />
+                            </div>
+                          </div>
+                          <div className="mb-4">
+                            <label className="block text-gray-300 mb-1 text-sm">Опис</label>
+                            <textarea
+                              value={episode.description}
+                              onChange={(e) => {
+                                const updated = [...formData.episodes]
+                                updated[index].description = e.target.value
+                                setFormData({ episodes: updated })
+                              }}
+                              rows={2}
+                              placeholder="Опис епізоду (необов'язково)"
+                              className="w-full px-3 py-2 bg-gray-700 text-white rounded text-sm"
+                            />
+                          </div>
+                          <div className="mb-4">
+                            <label className="block text-gray-300 mb-1 text-sm">
+                              Посилання на відео (кожне з нового рядка)
+                            </label>
+                            <textarea
+                              value={episode.videoLinks}
+                              onChange={(e) => {
+                                const updated = [...formData.episodes]
+                                updated[index].videoLinks = e.target.value
+                                setFormData({ episodes: updated })
+                              }}
+                              rows={3}
+                              placeholder="https://ashdi.vip/vod/123&#10;https://tortuga.wtf/embed/abc"
+                              className="w-full px-3 py-2 bg-gray-700 text-white rounded font-mono text-xs"
+                            />
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const updated = formData.episodes.filter((_, i) => i !== index)
+                              setFormData({ episodes: updated })
+                            }}
+                            className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 text-sm"
+                          >
+                            Видалити епізод
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
 
               <div className="flex gap-4">
                 <button
@@ -552,6 +701,22 @@ export default function AdminPanel() {
                   }`}
                 >
                   Популярні серіали
+                </button>
+                <button
+                  onClick={() => handleLoadPopular('animated-movies', 1)}
+                  className={`px-4 py-2 rounded ${
+                    importType === 'animated-movies' ? 'bg-primary text-white' : 'bg-gray-800 text-gray-300'
+                  }`}
+                >
+                  Популярні мультфільми
+                </button>
+                <button
+                  onClick={() => handleLoadPopular('animated-series', 1)}
+                  className={`px-4 py-2 rounded ${
+                    importType === 'animated-series' ? 'bg-primary text-white' : 'bg-gray-800 text-gray-300'
+                  }`}
+                >
+                  Популярні мультсеріали
                 </button>
               </div>
 

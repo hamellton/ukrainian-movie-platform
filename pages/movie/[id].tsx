@@ -17,7 +17,15 @@ export default function MoviePage() {
   )
   const { data: relatedData } = useSWR<{ movies: MovieWithRelations[] }>(
     data?.movie?.genres?.length
-      ? `/api/movies?limit=8&genre=${data.movie.genres[0]}&type=${data?.movie?.type === 'SERIES' ? 'series' : 'movie'}`
+      ? `/api/movies?limit=8&genre=${data.movie.genres[0]}&type=${
+          data?.movie?.type === 'SERIES' || data?.movie?.type === 'ANIMATED_SERIES' 
+            ? 'series' 
+            : data?.movie?.type === 'ANIMATED_MOVIE' 
+            ? 'animated-movie' 
+            : data?.movie?.type === 'COLLECTION'
+            ? 'collection'
+            : 'movie'
+        }`
       : null,
     fetcher
   )

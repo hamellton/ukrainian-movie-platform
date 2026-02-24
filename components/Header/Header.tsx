@@ -7,8 +7,11 @@ export default function Header() {
 
   const navItems = [
     { href: '/', label: 'Головна', icon: FiHome },
-    { href: '/movies', label: 'Фільми', icon: FiFilm },
     { href: '/series', label: 'Серіали', icon: FiTv },
+    { href: '/animated-series', label: 'Мультсеріали', icon: FiTv },
+    { href: '/movies', label: 'Фільми', icon: FiFilm },
+    { href: '/animated-movies', label: 'Мультфільми', icon: FiFilm },
+    { href: '/collections', label: 'Добірки', icon: FiFilm },
   ]
 
   return (

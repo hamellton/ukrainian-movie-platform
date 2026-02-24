@@ -60,7 +60,7 @@ export default function Home() {
       <div className="container mx-auto px-4 py-8">
         <div className="mb-8">
           <h1 className="text-4xl font-bold text-white mb-4">Популярні фільми та серіали</h1>
-          <div className="flex gap-4 mb-6">
+          <div className="flex flex-wrap gap-4 mb-6">
             <button
               onClick={() => handleTypeChange('')}
               className={`px-4 py-2 rounded ${
@@ -68,6 +68,22 @@ export default function Home() {
               }`}
             >
               Всі
+            </button>
+            <button
+              onClick={() => handleTypeChange('series')}
+              className={`px-4 py-2 rounded ${
+                type === 'series' ? 'bg-primary text-white' : 'bg-gray-800 text-gray-300'
+              }`}
+            >
+              Серіали
+            </button>
+            <button
+              onClick={() => handleTypeChange('animated-series')}
+              className={`px-4 py-2 rounded ${
+                type === 'animated-series' ? 'bg-primary text-white' : 'bg-gray-800 text-gray-300'
+              }`}
+            >
+              Мультсеріали
             </button>
             <button
               onClick={() => handleTypeChange('movie')}
@@ -78,12 +94,20 @@ export default function Home() {
               Фільми
             </button>
             <button
-              onClick={() => handleTypeChange('series')}
+              onClick={() => handleTypeChange('animated-movie')}
               className={`px-4 py-2 rounded ${
-                type === 'series' ? 'bg-primary text-white' : 'bg-gray-800 text-gray-300'
+                type === 'animated-movie' ? 'bg-primary text-white' : 'bg-gray-800 text-gray-300'
               }`}
             >
-              Серіали
+              Мультфільми
+            </button>
+            <button
+              onClick={() => handleTypeChange('collection')}
+              className={`px-4 py-2 rounded ${
+                type === 'collection' ? 'bg-primary text-white' : 'bg-gray-800 text-gray-300'
+              }`}
+            >
+              Добірки
             </button>
           </div>
           <GenreFilter />

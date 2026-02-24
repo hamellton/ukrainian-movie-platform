@@ -1,6 +1,15 @@
 import { create } from 'zustand'
 import { MovieWithRelations, TmdbMovieResult } from '@/types'
 
+export interface EpisodeFormData {
+  id?: string
+  seasonNumber: number
+  episodeNumber: number
+  title: string
+  description: string
+  videoLinks: string
+}
+
 export interface AdminFormData {
   title: string
   titleOriginal: string
@@ -13,11 +22,12 @@ export interface AdminFormData {
   countries: string
   rating: string
   duration: string
-  type: 'MOVIE' | 'SERIES'
+  type: 'MOVIE' | 'SERIES' | 'ANIMATED_MOVIE' | 'ANIMATED_SERIES' | 'COLLECTION'
   videoLinks: string
+  episodes: EpisodeFormData[]
 }
 
-export type ImportType = 'movies' | 'series' | 'popular'
+export type ImportType = 'movies' | 'series' | 'popular' | 'animated-movies' | 'animated-series'
 
 const initialFormData: AdminFormData = {
   title: '',
@@ -33,6 +43,7 @@ const initialFormData: AdminFormData = {
   duration: '',
   type: 'MOVIE',
   videoLinks: '',
+  episodes: [],
 }
 
 interface AdminState {
@@ -92,7 +103,15 @@ export const useAdminStore = create<AdminState>((set) => ({
         rating: movie.rating.toString(),
         duration: movie.duration?.toString() || '',
         type: movie.type,
-        videoLinks: movie.videoLinks.map((vl) => vl.url).join('\n'),
+        videoLinks: (movie.videoLinks || []).map((vl) => vl.url).join('\n'),
+        episodes: (movie.episodes || []).map((ep) => ({
+          id: ep.id,
+          seasonNumber: ep.seasonNumber,
+          episodeNumber: ep.episodeNumber,
+          title: ep.title,
+          description: ep.description || '',
+          videoLinks: (ep.videoLinks || []).map((vl) => vl.url).join('\n'),
+        })),
       },
     }),
   resetForm: () =>

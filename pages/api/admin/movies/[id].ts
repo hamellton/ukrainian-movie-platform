@@ -4,7 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { requireAuth, AuthenticatedRequest } from '@/middleware/auth'
 import { parseVideoUrl, validateVideoUrl } from '@/utils/videoParser'
 import { MovieType, VideoSource } from '@prisma/client'
-import { MovieCreateInput, VideoLinkCreateInput } from '@/types'
+import { MovieCreateInput, VideoLinkCreateInput, EpisodeCreateInput } from '@/types'
 import { getErrorMessage, getErrorDetails } from '@/utils/errorHandler'
 
 async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
@@ -43,6 +43,7 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
     try {
       const body = req.body as Partial<MovieCreateInput> & {
         videoLinks?: VideoLinkCreateInput[]
+        episodes?: EpisodeCreateInput[]
       }
 
       const updateData: Prisma.MovieUpdateInput = {
@@ -91,7 +92,77 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
       }
 
       if (body.type) {
-        updateData.type = body.type.toUpperCase() === 'MOVIE' ? MovieType.MOVIE : MovieType.SERIES
+        const typeUpper = body.type.toUpperCase()
+        switch (typeUpper) {
+          case 'SERIES':
+            updateData.type = MovieType.SERIES
+            break
+          case 'ANIMATED_SERIES':
+            updateData.type = MovieType.ANIMATED_SERIES
+            break
+          case 'ANIMATED_MOVIE':
+            updateData.type = MovieType.ANIMATED_MOVIE
+            break
+          case 'COLLECTION':
+            updateData.type = MovieType.COLLECTION
+            break
+          default:
+            updateData.type = MovieType.MOVIE
+        }
+      }
+
+      if (body.episodes && Array.isArray(body.episodes)) {
+        await prisma.episode.deleteMany({
+          where: { movieId: id },
+        })
+
+        const episodesData: Prisma.EpisodeCreateWithoutMovieInput[] = []
+        for (const ep of body.episodes) {
+          const episodeData: Prisma.EpisodeUncheckedCreateWithoutMovieInput = {
+            episodeNumber: ep.episodeNumber,
+            seasonNumber: ep.seasonNumber,
+            title: ep.title,
+            description: ep.description ?? null,
+            duration: ep.duration ?? null,
+            thumbnail: ep.thumbnail ?? null,
+          }
+
+          if (ep.videoLinks && ep.videoLinks.length > 0) {
+            const validatedLinks: Prisma.VideoLinkUncheckedCreateWithoutEpisodeInput[] = []
+            for (const link of ep.videoLinks) {
+              if (validateVideoUrl(link.url)) {
+                const parsed = await parseVideoUrl(link.url)
+                if (parsed) {
+                  validatedLinks.push({
+                    url: parsed.url,
+                    quality: parsed.quality || link.quality || '720p',
+                    source: parsed.source.toUpperCase() as VideoSource,
+                    language: 'uk',
+                    isActive: true,
+                    movieId: id,
+                  })
+                }
+              }
+            }
+            episodesData.push({
+              ...episodeData,
+              videoLinks: {
+                create: validatedLinks,
+              },
+            } as Prisma.EpisodeCreateWithoutMovieInput)
+          } else {
+            episodesData.push({
+              ...episodeData,
+              videoLinks: {
+                create: [],
+              },
+            } as Prisma.EpisodeCreateWithoutMovieInput)
+          }
+        }
+
+        updateData.episodes = {
+          create: episodesData,
+        }
       }
 
       const movie = await prisma.movie.update({

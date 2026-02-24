@@ -26,8 +26,24 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
         ]
       }
 
-      if (type && (type === 'movie' || type === 'series')) {
-        where.type = type === 'movie' ? MovieType.MOVIE : MovieType.SERIES
+      if (type && typeof type === 'string') {
+        switch (type) {
+          case 'movie':
+            where.type = MovieType.MOVIE
+            break
+          case 'series':
+            where.type = MovieType.SERIES
+            break
+          case 'animated-movie':
+            where.type = MovieType.ANIMATED_MOVIE
+            break
+          case 'animated-series':
+            where.type = MovieType.ANIMATED_SERIES
+            break
+          case 'collection':
+            where.type = MovieType.COLLECTION
+            break
+        }
       }
 
       const skip = (parseInt(String(page)) - 1) * parseInt(String(limit))
@@ -86,7 +102,20 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
         countries: body.countries || [],
         rating: body.rating || 0,
         duration: body.duration,
-        type: body.type === 'SERIES' ? MovieType.SERIES : MovieType.MOVIE,
+        type: (() => {
+          switch (body.type) {
+            case 'SERIES':
+              return MovieType.SERIES
+            case 'ANIMATED_SERIES':
+              return MovieType.ANIMATED_SERIES
+            case 'ANIMATED_MOVIE':
+              return MovieType.ANIMATED_MOVIE
+            case 'COLLECTION':
+              return MovieType.COLLECTION
+            default:
+              return MovieType.MOVIE
+          }
+        })(),
         tmdbId: body.tmdbId,
         imdbId: body.imdbId,
       }

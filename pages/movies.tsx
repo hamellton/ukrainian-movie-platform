@@ -32,7 +32,7 @@ export default function MoviesPage() {
   }, [router.isReady, router.query, setFilters])
 
   const { data, error, isLoading } = useSWR<MoviesResponse>(
-    `/api/movies?page=${page}&limit=20&type=movie&genre=${genre}&sort=-releaseDate`,
+    `/api/movies?page=${page}&limit=20&type=movie,animated-movie&genre=${genre}&sort=-releaseDate`,
     fetcher
   )
 
@@ -48,7 +48,7 @@ export default function MoviesPage() {
     <main className="min-h-screen bg-black">
       <div className="container mx-auto px-4 py-8">
         <div className="mb-8">
-          <h1 className="text-4xl font-bold text-white mb-6">Фільми</h1>
+          <h1 className="text-4xl font-bold text-white mb-6">Фільми та Мультфільми</h1>
           <GenreFilter />
         </div>
 

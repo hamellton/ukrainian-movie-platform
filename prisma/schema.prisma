@@ -111,6 +111,9 @@ enum Role {
 enum MovieType {
   MOVIE
   SERIES
+  ANIMATED_MOVIE
+  ANIMATED_SERIES
+  COLLECTION
 }
 
 enum VideoSource {

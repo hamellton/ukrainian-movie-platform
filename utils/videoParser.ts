@@ -6,6 +6,7 @@ const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36
 const SUPPORTED_HOSTS = [
   'ashdi.vip',
   'tortuga.wtf',
+  'tortuga.tw',
   'vidstreaming.io',
   'streamtape.com',
   'mixdrop.co',
@@ -60,10 +61,6 @@ function normalizeUrl(url: string): string {
   
   if (!normalized.startsWith('http://') && !normalized.startsWith('https://')) {
     normalized = `https:${normalized}`
-  }
-  
-  if (normalized.includes('ashdi.vip/vod/')) {
-    normalized = normalized.replace('/vod/', '/embed/')
   }
   
   return normalized
@@ -165,7 +162,7 @@ function extractVideoLinks(host: string, html: string): string[] {
     for (const match of matchesArr) {
       const videoId = match[1]
       if (host === 'ashdi.vip') {
-        links.push(`https://ashdi.vip/embed/${videoId}`)
+        links.push(`https://ashdi.vip/vod/${videoId}`)
       } else if (host === 'tortuga.wtf') {
         links.push(`https://tortuga.wtf/embed/${videoId}`)
       } else {

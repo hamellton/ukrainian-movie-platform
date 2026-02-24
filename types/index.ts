@@ -43,7 +43,7 @@ export interface MovieCreateInput {
   countries?: string[]
   rating?: number
   duration?: number
-  type?: 'MOVIE' | 'SERIES'
+  type?: 'MOVIE' | 'SERIES' | 'ANIMATED_MOVIE' | 'ANIMATED_SERIES' | 'COLLECTION'
   videoLinks?: Array<{
     url: string
     quality?: string
@@ -102,6 +102,26 @@ export interface TmdbSearchResponse {
   total_results: number
 }
 
+export interface TmdbSeason {
+  air_date?: string
+  episode_count: number
+  id: number
+  name: string
+  overview?: string
+  poster_path?: string | null
+  season_number: number
+}
+
+export interface TmdbEpisode {
+  air_date?: string
+  episode_number: number
+  id: number
+  name: string
+  overview?: string
+  runtime?: number
+  still_path?: string | null
+}
+
 export interface TmdbMovieDetails extends TmdbMovieResult {
   genres: TmdbGenre[]
   production_countries: TmdbProductionCountry[]
@@ -110,6 +130,9 @@ export interface TmdbMovieDetails extends TmdbMovieResult {
   imdb_id?: string
   original_title: string
   original_name?: string
+  seasons?: TmdbSeason[]
+  number_of_seasons?: number
+  number_of_episodes?: number
 }
 
 export type PrismaMovieWhereInput = Prisma.MovieWhereInput

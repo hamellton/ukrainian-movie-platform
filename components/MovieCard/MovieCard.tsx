@@ -7,7 +7,8 @@ interface MovieCardProps {
 }
 
 export default function MovieCard({ movie }: MovieCardProps) {
-  const href = movie.type === 'SERIES' 
+  const isSeries = movie.type === 'SERIES' || movie.type === 'ANIMATED_SERIES'
+  const href = isSeries 
     ? `/series/${movie.id}` 
     : `/movie/${movie.id}`
 
@@ -30,6 +31,21 @@ export default function MovieCard({ movie }: MovieCardProps) {
         {movie.type === 'SERIES' && (
           <div className="absolute top-2 left-2 bg-accent text-black px-2 py-1 rounded text-xs font-bold">
             Серіал
+          </div>
+        )}
+        {movie.type === 'ANIMATED_SERIES' && (
+          <div className="absolute top-2 left-2 bg-accent text-black px-2 py-1 rounded text-xs font-bold">
+            Мультсеріал
+          </div>
+        )}
+        {movie.type === 'ANIMATED_MOVIE' && (
+          <div className="absolute top-2 left-2 bg-accent text-black px-2 py-1 rounded text-xs font-bold">
+            Мультфільм
+          </div>
+        )}
+        {movie.type === 'COLLECTION' && (
+          <div className="absolute top-2 left-2 bg-accent text-black px-2 py-1 rounded text-xs font-bold">
+            Добірка
           </div>
         )}
       </div>
